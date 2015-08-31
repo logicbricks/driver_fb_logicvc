@@ -1,0 +1,648 @@
+/******************************************************************************/
+	Xylon logiCVC Frame Buffer Driver User Manual
+
+	(C) Xylon d.o.o. 2014.
+	e-mail: support@logicbricks.com
+
+	Last update: 01.10.2014.
+/******************************************************************************/
+
+
+Xylon frame buffer driver
+=========================
+Xylon frame buffer driver is Linux kernel driver which supports Xylon logiCVC-ML
+FPGA IP core. The logiCVC-ML is Compact Video Controller with Multilayer support
+optimized for Xilinx FPGA.
+
+Driver supports:
+-	Resolutions from 64x1 up to 2048x2048
+-	Up to 5 layers, last configurable as background color
+-	Configurable layer size and position
+-	Dynamically configurable layers’ address
+-	Alpha blending and Color keyed transparency
+-	Pixel, Layer or Color lookup table alpha blending mode
+-	Packed pixel layer memory organization
+		- RGB
+			– pixel color depth 8bpp (color look-up table)
+			- 16 bits per pixel Hicolor RGB 5-6-5
+			- Truecolor 24bpp
+		- YUV
+			- pixel color depth 8bpp
+			  (color look-up table with AYUV8888 only!)
+			- 16 bits per pixel (4:2:2)
+			- 32 bits per pixel (4:4:4) : memory layout => AYUV8888
+-	Programmable or fixed layer memory base address
+-	Double/triple buffering enables flicker-free reproduction
+-	Display power-on sequencing control signals
+-	Pixel clock frequency supported with:
+		- logiCLK IP core (ZED and other boards)
+		- Si570 hardware (ZC70x board)
+Miscellaneous:
+-	Interfacing the ADV7511 HDMI transmitter V4L2 driver to retrieve EDID
+	parameters and initialize the logiCVC-ML display controller IP core
+	accordingly to the preferred display resolution.
+
+
+Xylon frame buffer driver
+=========================
+
+The Linux kernel contains Open Firmware (OF) functionality to provide various
+information and parameters about specific hardware devices to the OF kernel
+drivers. These parameters are called properties and are available to OF kernel
+driver for usage at loading time. The OF properties are loaded from Device Tree
+Blob (DTB) binary file stored in memory by boot loader, waiting on specific OF
+kernel driver to use them. The Linux kernel must be configured to support the OF
+functionality in order to enable and use the OF properties. Device Tree Source
+(DTS) file is used as an input to the Device Tree parsing script located in the
+Linux kernel tree for generating the DTB file.
+
+The OF functionality is often used in embedded systems based on SoC and FPGA
+devices, since the programmable devices can often change internal configuration.
+When the SoC/FPGA hardware configuration changes, any hardware parameter can be
+changed and used by the kernel driver without the need for recompiling the Linux
+kernel or Linux kernel driver. If new hardware (SoC/FPGA) functionality property
+is added in the kernel driver code and the DTS file, the Linux kernel and the
+Linux kernel driver must be recompiled.
+
+
+
+Xylon frame buffer driver file structure
+========================================
+Driver source files are located in Linux kernel folder
+drivers/video/fbdev/xylon
+Driver header file is located in Linux kernel folder
+include/uapi/linux
+
+
+Xylon frame buffer driver configuration
+=======================================
+In Linux kernel configuration menu position to:
+Drivers -> Graphics support -> Support for frame buffer devices ->
+Xylon logiCVC frame buffer support
+   Select „Xylon logiCVC pixel clock“ and choose:
+      Xylon logiCLK pixel clock generator
+         Usable only with logiCLK IP core present in FPGA.
+      Si570 pixel clock generator
+   Select „Xylon logiCVC frame buffer miscellaneous support“ and pick if needed:
+      Xylon logiCVC frame buffer ADV7511
+Drivers -> Generic Driver Options
+   Set value minimally to size of video memory used by logiCVC-ML.
+Read help menu for details.
+
+Xylon FB driver depends on Linux kernel Open Firmware support,
+but this is enabled by default on Xilinx ARM Linux kernel.
+Xylon FB driver can be kernel driver or kernel module.
+
+Pixel clock source depends on FPGA design where logiCVC pixel clock input can be
+connected to logiCLK IP core, to Si570 clock generator (ZC70x boards), or some
+external clock source.
+
+Xylon FB driver miscellaneous support is designed to enable logiCVC usage of
+board or FPGA hardware devices for achieving more complex functionality, except
+basic display/monitor driving.
+
+
+Xylon FB driver properties
+==========================
+Required properties:
+ - compatible
+ - device
+
+Optional properties:
+ - clocks
+ - console-layer
+ - edid-video-mode
+ - edid-print
+ - vsync-irq
+ - video-mode
+   - M
+   - R
+   - i
+   - m
+
+Note: for more information check xylonfb.txt
+
+
+Xylon logiCVC IP core properties
+================================
+Required properties:
+ - compatible
+ - reg
+ - interrupts-parent
+ - interrupts
+ - pixel-stride
+ - layer_N
+ - bits-per-pixel
+ - type
+ - transparency
+
+Optional properties:
+ - background-layer-bits-per-pixel
+ - background-layer-type
+ - hsync-active-low
+ - vsync-active-low
+ - pixel-data-invert
+ - pixel-data-output-trigger-high
+ - readable-regs
+ - size-position
+ - component-swap
+ - data-enable-active-low
+ - display-interface-itu656
+ - address
+ - buffer-offset
+ - power-delay
+ - signal-delay
+
+Note: for more information check logicvc.txt
+
+
+Xylon FB driver miscellaneous properties (ADV7511)
+==================================================
+Required properties:
+ - compatible
+ - reg
+ - interrupts
+ - interrupts-parent
+ - dma-request
+ - edid-addr
+ - video-input
+   - input-id
+   - input-style
+   - input-color-depth
+   - bit-justification
+   - hsync-polarity
+   - vsync-polarity
+   - clock-delay
+ - video-output
+   - hdmi-mode
+   - output-format
+   - output-color-space
+   - up-conversion
+   - csc-enable
+   - csc-scaling-factor
+   - csc-coefficients
+
+Note: for more information check xylonfb_adv7511.txt
+
+
+Xylon FB driver parameters
+==========================
+List of DTS parameters, which describes Xylon FB driver:
+
+compatible = "xylon,fb-3.00.a";
+clocks = <&clkout_0>;
+device = <&logicvc_0>;
+console-layer = <2>;
+edid-video-mode;
+edid-print;
+vsync-irq;
+video-mode = "1920x1080MR";
+
+
+Xylon logiCVC IP core parameters used by Xylon FB driver
+========================================================
+List of DTS parameters, which describes logiCVC configuration:
+
+compatible = "xylon,logicvc-4.00.a";
+reg = <0x40000000 0x6000>;
+interrupt-parent = <&ps7_scugic_0>;
+interrupts = <0 29 4>;
+background-layer-bits-per-pixel = <32>;
+background-layer-type = "rgb";
+display-interface-itu656;
+hsync-active-low;
+vsync-active-low;
+data-enable-active-low;
+pixel-data-invert;
+pixel-data-output-trigger-high;
+readable-regs;
+size-position;
+pixel-stride = <2048>;
+power-delay = <0>;
+signal-delay = <0>;
+layer_0 {
+	address = <0x30000000>
+	buffer-offset = <512>;
+	bits-per-pixel = <16>;
+	type = "yuv";
+	transparency = "layer";
+	component-swap;
+};
+layer_1 {
+	address = <0x30600000>;
+	bits-per-pixel = <32>;
+	type = "rgb";
+	transparency = "pixel";
+};
+layer_2 {
+	address = <0x31F50000>;
+	bits-per-pixel = <8>;
+	type = "rgb";
+	transparency = "clut32";
+};
+layer_3 {
+	address = <0x3216C000 0xCA8000>;
+	bits-per-pixel = <16>;
+	type = "rgb";
+	transparency = "layer";
+};
+
+
+Xylon FB driver miscellaneous parameters (ADV7511)
+==================================================
+List of DTS parameters, which describes ADV7511 configuration:
+
+compatible = "adv7511";
+reg = <0x39>;
+interrupts = <0 54 4>;
+interrupt-parent = <&ps7_scugic_0>;
+dma-request = <&logicvc_0>;
+edid-addr = <0x50>;
+video-input {
+	input-id = <1>;
+	input-style = <3>;
+	input-color-depth = <8>;
+	bit-justification = <1>;
+	hsync-polarity = <0>;
+	vsync-polarity = <0>;
+	clock-delay = <3>;
+};
+video-output {
+	hdmi-mode = <0>;
+	output-format =	<0>;
+	output-color-space = <0>;
+	up-conversion =	<0>;
+	csc-enable = <1>;
+	csc-scaling-factor = <2>;
+	csc-coefficients {
+		a1 = <0x0B37>;
+		a2 = <0x0800>;
+		a3 = <0x0000>;
+		a4 = <0x1A86>;
+		b1 = <0x1A49>;
+		b2 = <0x0800>;
+		b3 = <0x1D3F>;
+		b4 = <0x0422>;
+		c1 = <0x0000>;
+		c2 = <0x0800>;
+		c3 = <0x0E2D>;
+		c4 = <0x1914>;
+	};
+};
+
+
+Xylon FB specific SW parameters description
+===========================================
+"console-layer"
+    layer ID for FB console (0 - 4)
+"edid-video-mode"
+    preferred EDID video mode
+"edid-print"
+    prints EDID description in system log
+"vsync-irq"
+    generate interrupt on vertical synchronization pulse
+"video-mode"
+    preferred video mode resolution
+
+
+Xylon logiCVC IP specific parameters description
+================================================
+"background-layer-bits-per-pixel"
+    background layer bits per pixel (8, 16, 32)
+"background-layer-type"
+    background layer type (rgb, yuv)
+"display-interface-itu656"
+    modifies rgb to yuv conversion coefficients
+"hsync-active-low"
+    horizontal synchronization pulse is active low "L"
+"vsync-active-low;"
+    vertical synchronization pulse is active low "L"
+"data-enable-active-low"
+    data enable signal is active low "L"
+"pixel-data-invert"
+    output pixel data polarity is inverted
+"pixel-data-output-trigger-high"
+    output pixel data triggers on rising edge
+"readable-regs"
+    all logiCVC registers are available for reading
+"size-position"
+    logiCVC functionality for controlling on screen layer size
+    and position is available
+"pixel-stride"
+    layer width in pixels
+"power-delay"
+    delay in ms after enabling VDD
+"signal-delay"
+    delay in ms after enabling display control and data signals
+    in parallel and LVDS interface
+
+"layer_N"
+    layer has its own configuration described with below properties
+    where N is layer ID in range 0 - 4
+"address"
+    layer video memory address or/and memory range for layer_N where N is
+    layer ID in range 0 - 4
+"buffer-offset"
+    buffer address offset represented in number of lines
+"bits-per-pixel"
+    number of bits per pixel on layer (8, 16, 32)
+"type"
+    layer type (rgb, yuv, alpha)
+"transparency"
+    layer transparency (clut16, clut32, layer, pixel)
+"component-swap"
+    swap the order of colour components inside the pixel
+
+
+Xylon FB driver miscellaneous parameters (ADV7511) description
+==============================================================
+"edid-addr"
+    the I2C address for EDID memory
+
+"video-input"
+    video input has its own configuration described with below properties
+"input-id"
+    input video format and sync selection (0 - 8)
+"input-style"
+    input pin assignments (0 - 3)
+"input-color-depth"
+    color depth in bits for input video data (12, 10, 8)
+"bit-justification"
+    bit justfication for YUV 4:2:2 modes (0 - 3)
+"hsync-polarity"
+    horisontal synchronization pulse polarity for embedded syncdecoder
+    and sync adjustment
+"vsync-polarity"
+    vertical synchronization pulse polarity for embedded syncdecoder
+    and sync adjustment
+"clock-delay"
+    programmable delay for input video clock
+    Default is 0 for no delay.
+
+"video-output"
+    video output has its own configuration described with below properties
+"hdmi-mode"
+    HDMI or DVI selection
+"output-format"
+    output video format (4:4:4, 4:2:2)
+"output-color-space"
+    output color space selection (RGB, YUV)
+"up-conversion"
+    4:2:2 to 4:4:4 up conversion method selection of zero
+    or first order interpolation
+"csc-enable"
+    color space converter enabled
+"csc-scaling-factor"
+    color space converter mode
+    Sets the fixed point position of the CSC coefficients.
+"csc-coefficients"
+    coefficient values for all CSC channels
+
+
+Xylon FB resolution setting description
+=======================================
+Setting default screen resolution in Xylon FB driver is supported through
+DTS file or kernel command line. If DTS and kernel command line video mode
+parameters are present in the same time, DTS parameters will be used.
+If no DTS and kernel command line video mode parameters are present, driver
+will use its default built-in video mode parameters. In case that only DTS or
+only kernel command line parameters are present, present one will be used.
+
+Xylon FB driver fixed video mode resolution is defined in
+drivers/video/fbdev/xylon/xylonfb_core.c file in
+struct xylonfb_vmode xylonfb_vm static structure.
+
+Xylon FB driver supports multi display configuration by running multiple
+driver instances over multiple logiCVC.
+Defining multiple driver instances in FB driver configuration:
+- DTS contains two or more logiCVC nodes with parameters set according to
+  multiple logiCVC HW instances
+
+
+Xylon frame buffer driver build procedure for Xilinx ARM Linux kernel
+=====================================================================
+Add following parameters to kernel boot arguments:
+console=tty0
+
+"console=tty0"
+ -> Linux framebuffer console will work with /dev/tty0
+
+Position on host computer to kernel root folder:
+Run configuration menu:
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi- menuconfig
+Follow steps from chapter „Xylon frame buffer driver configuration“.
+Build complete kernel:
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi-
+Build uImage:
+make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi- UIMAGE_LOADADDR=0x8000 \
+uImage
+
+After building the kernel, install kernel modules into RAM filesystem by running
+following commands:
+sudo mkdir /mnt/ramdisk
+gunzip ramdisk8M.image.gz
+sudo mount ramdisk8M.image /mnt/ramdisk/
+sudo rm -r /mnt/ramdisk/lib/modules/
+sudo make ARCH=arm CROSS_COMPILE=arm-none-linux-gnueabi-
+INSTALL_MOD_PATH=/mnt/ramdisk modules_install
+sudo umount /mnt/ramdisk
+gzip -9 ramdisk8M.image
+
+Creating DTB file:
+Place devicetree.dts into kernel root folder
+scripts/dtc/dtc -I dts -O dtb -o devicetree.dtb devicetree.dts
+
+Copy following images to root of SD card relative to kernel root folder:
+- arch/arm/boot/uImage
+- uramdisk8M.image.gz
+- devicetree.dtb
+
+
+Xylon frame buffer test application
+===================================
+Xylon FB driver functionality is tested with simple test application which
+opens all available frame buffer devices and draws simple color rectangles and
+images to frame buffer memory.
+The test application supports logiCVC 3.x and 4.x IP core versions.
+The test application draws simple graphics (red, blue, green rectangle) on user
+selected logiCVC layer. To show that application can work on different logiCVC
+layer types and formats, same colored rectangles will be drawn to different
+logiCVC layers regarding color depth and alpha pixel byte formats. On 16 bpp and
+32 bpp layers test application will draw two images - Xylon and Xilinx logos.
+
+Xylon FB driver interface functions:
+The test application tests specific Xylon FB driver IOCTL functions which can
+be used by any application for advanced functionality of displaying on-screen
+graphics.
+
+Specific IOCTL functions:
+- Enable / Disable VSYNC interrupt
+- Get layer physical index
+- Get / Set layer alpha value
+- Enable / Disable / Get / Set layer color transparency
+- Get / Set layer size and position
+- Get / Set layer video buffer
+- Get layer buffer offset
+- Get / Set background color
+- Enable / Disable layer external buffer switching
+- Read / Write any logiCVC register (for debug purposes only!)
+- Get IP core version
+- Wait / Read display device EDID
+
+The test application gives possibility to change logiCVC display resolution.
+Few test resolutions are hardcoded inside of application itself.
+
+Using test application:
+For help just run ./fbtest and follow the instructions.
+
+XylonFB DTS snippet (add to devicetree.dts file):
+=================================================
+
+logicvc_0: logicvc@40000000 {
+	compatible = "xylon,logicvc-4.00.a";
+	reg = <0x40000000 0x6000>;
+	interrupt-parent = <&ps7_scugic_0>;
+	interrupts = <0 29 4>;
+	background-layer-bits-per-pixel = <32>;
+	background-layer-type = "rgb";
+	display-interface-itu656;
+	hsync-active-low;
+	vsync-active-low;
+	data-enable-active-low;
+	pixel-data-invert;
+	pixel-data-output-trigger-high;
+	readable-regs;
+	size-position;
+	pixel-stride = <2048>;
+	power-delay = <100>;
+	signal-delay = <50>;
+	layer_0 {
+		address = <0x30000000>
+		buffer-offset = <512>;
+		bits-per-pixel = <16>;
+		type = "yuv";
+		transparency = "layer";
+		component-swap;
+	};
+	layer_1 {
+		address = <0x30600000>;
+		bits-per-pixel = <32>;
+		type = "rgb";
+		transparency = "pixel";
+	};
+	layer_2 {
+		address = <0x31F50000>;
+		bits-per-pixel = <8>;
+		type = "rgb";
+		transparency = "clut32";
+	};
+	layer_3 {
+		address = <0x3216C000 0xCA8000>;
+		bits-per-pixel = <16>;
+		type = "rgb";
+		transparency = "layer";
+	};
+
+	display-timings {
+		native-mode = <&hd1080p>;
+		hd720p: 1280x720 {
+			clock-frequency = <74250000>;
+			hactive = <1280>;
+			vactive = <720>;
+			hfront-porch = <110>;
+			hback-porch = <220>;
+			hsync-len = <40>;
+			vfront-porch = <5>;
+			vback-porch = <20>;
+			vsync-len = <5>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <1>;
+			pixelclk-active = <1>;
+		};
+		wsxga: 1680x1050 {
+			clock-frequency = <119000000>;
+			hactive = <1680>;
+			vactive = <1050>;
+			hfront-porch = <48>;
+			hback-porch = <80>;
+			hsync-len = <32>;
+			vfront-porch = <3>;
+			vback-porch = <21>;
+			vsync-len = <6>;
+		};
+		hd1080p: 1920x1080 {
+			clock-frequency = <148500000>;
+			hactive = <1920>;
+			vactive = <1080>;
+			hfront-porch = <88>;
+			hback-porch = <148>;
+			hsync-len = <44>;
+			vfront-porch = <4>;
+			vback-porch = <36>;
+			vsync-len = <5>;
+		};
+		TM050RBH01: 800x480 {
+			clock-frequency = <30000000>;
+			hactive = <800>;
+			vactive = <480>;
+			hfront-porch = <40>;
+			hback-porch = <40>;
+			hsync-len = <48>;
+			vfront-porch = <13>;
+			vback-porch = <29>;
+			vsync-len = <3>;
+		};
+	};
+};
+
+xylon_fb {
+	compatible = "xylon,fb-3.00.a";
+	clocks = <&clkout_0>;
+	device = <&logicvc_0>;
+	console-layer = <2>;
+	edid-video-mode;
+	edid-print;
+	vsync-irq;
+	video-mode = "1280x720MR";
+};
+
+adv7511: adv7511@39 {
+	compatible = "adv7511";
+	reg = <0x39>;
+	interrupts = <0 54 4>;
+	interrupt-parent = <&ps7_scugic_0>;
+	dma-request = <&logicvc_0>;
+	edid-addr = <0x50>;
+	video-input {
+		input-id = <1>;
+		input-style = <3>;
+		input-color-depth = <8>;
+		bit-justification = <1>;
+		hsync-polarity = <0>;
+		vsync-polarity = <0>;
+		clock-delay = <3>;
+	};
+	video-output {
+		hdmi-mode = <0>;
+		output-format =	<0>;
+		output-color-space = <0>;
+		up-conversion =	<0>;
+		csc-enable = <1>;
+		csc-scaling-factor = <2>;
+		csc-coefficients {
+			a1 = <0x0B37>;
+			a2 = <0x0800>;
+			a3 = <0x0000>;
+			a4 = <0x1A86>;
+			b1 = <0x1A49>;
+			b2 = <0x0800>;
+			b3 = <0x1D3F>;
+			b4 = <0x0422>;
+			c1 = <0x0000>;
+			c2 = <0x0800>;
+			c3 = <0x0E2D>;
+			c4 = <0x1914>;
+		};
+	};
+};

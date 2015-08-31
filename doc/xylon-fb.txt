@@ -1,0 +1,52 @@
+Binding for Xylon FB driver
+
+Xylon FB driver supports Xylon configurable video controller
+logiCVC FPGA IP core device.
+
+Required properties:
+ - compatible: value must be "xylon,fb-3.00.a"
+ - device: the phandle for logiCVC video controller device
+
+Optional properties:
+ - clocks: the phandle for the pixel clock generator
+ - console-layer: layer ID for FB console (0 - 4)
+      If omitted, FB console started on default layer ID 0.
+      Note: FB console can be started only on layer configured with one
+      of parameters combination below:
+      ======================================
+      bits-per-pixel    type    transparency
+      ======================================
+             8           yuv       clut32
+             8           rgb       clut16
+             8           rgb       clut32
+             8           rgb       layer
+            16           rgb       layer
+            32           rgb       layer
+            32           rgb       pixel
+      ======================================
+
+ - edid-video-mode: video mode set to preferred EDID resolution
+      If omitted, configured according to "video-mode" property.
+ - edid-print: prints EDID parameters to the system log
+      Must be used only with "edid-video-mode".
+      If omitted, functionality is not available.
+ - vsync-irq: generate interrupt on vertical synchronization pulse
+ - video-mode: preferred video mode resolution
+      If omitted, configures logiCVC to default video resolution "1024x768".
+   - M: Coordinated Video Timings (CVT)
+   - R: reduced video timings for digital displays
+   - i: calculate for an interlaced mode
+   - m: add margins to calculation calculation
+        (1.8% of xres rounded down to 8 pixels and 1.8% of yres).
+Example:
+
+	xylon_fb {
+		compatible = "xylon,fb-3.00.a";
+		clocks = <&clkout_0>;
+		device = <&logicvc_0>;
+		console-layer = <0>;
+		edid-video-mode;
+		edid-print;
+		vsync-irq;
+		video-mode = "1920x1080MR";
+	};
