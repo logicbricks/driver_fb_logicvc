@@ -28,7 +28,7 @@
 #define XYLONFB_DRIVER_NAME "xylonfb"
 #define XYLONFB_DEVICE_NAME "logicvc"
 #define XYLONFB_DRIVER_DESCRIPTION "Xylon logiCVC frame buffer driver"
-#define XYLONFB_DRIVER_VERSION "3.0"
+#define XYLONFB_DRIVER_VERSION "3.1"
 
 #define INFO		1
 #define CORE		2
