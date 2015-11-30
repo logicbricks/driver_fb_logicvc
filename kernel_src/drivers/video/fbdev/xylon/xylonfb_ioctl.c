@@ -26,8 +26,11 @@
 
 static int xylonfb_get_vblank(struct fb_vblank *vblank, struct fb_info *fbi)
 {
-	vblank->flags |= FB_VBLANK_HAVE_VSYNC;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_data *data = ld->data;
 
+	vblank->flags |= (FB_VBLANK_HAVE_VSYNC | FB_VBLANK_HAVE_COUNT);
+	vblank->count = data->vsync.count;
 	return 0;
 }
 
