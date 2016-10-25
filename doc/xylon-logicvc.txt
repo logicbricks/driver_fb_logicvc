@@ -1,7 +1,7 @@
 Binding for Xylon logiCVC configurable video controller IP core
 
 Required properties:
- - compatible: "xylon,logicvc-3.00.a", "xylon,logicvc-4.00.a"
+ - compatible: "xylon,logicvc-3.00.a", "xylon,logicvc-4.00.a", "xylon,logicvc-5.00.a"
  - reg: MMIO base address and size of the logiCVC IP core address space
  - interrupts-parent: the phandle for interrupt controller
  - interrupts: the interrupt number
@@ -21,8 +21,9 @@ Required properties:
          ===============================================
                    8                       clut16
                    8                       clut32
-                   8                       layer
-                   16                      layer
+                   8                       layer, pixel
+                   16                      layer, pixel
+                   30                      layer
                    32                      layer, pixel
          ===============================================
 
@@ -108,51 +109,47 @@ Optional properties:
 
 Example:
 
-	logicvc_0: logicvc@40000000 {
-		compatible = "xylon,logicvc-4.00.a";
-		reg = <0x40000000 0x6000>;
-		interrupt-parent = <&ps7_scugic_0>;
-		interrupts = <0 29 4>;
+	logicvc_0: logicvc@40030000 {
+		compatible = "xylon,logicvc-5.00.a";
+		reg = <0x40030000 0x6000>;
+		interrupt-parent = <&intc>;
+		interrupts = <0 58 4>;
 		background-layer-bits-per-pixel = <32>;
 		background-layer-type = "rgb";
-		display-interface-itu656;
 		hsync-active-low;
 		vsync-active-low;
-		data-enable-active-low;
-		pixel-data-invert;
-		pixel-data-output-trigger-high;
 		readable-regs;
 		size-position;
 		pixel-stride = <2048>;
-		power-delay = <100>;
-		signal-delay = <50>;
 		layer_0 {
-			address = <0x30000000>
-			buffer-offset = <512>;
-			bits-per-pixel = <16>;
-			type = "yuv";
-			transparency = "layer";
-			component-swap;
-		};
-		layer_1 {
-			address = <0x30600000>;
+			address = <0x338F4000>;
+			buffer-offset = <1080>;
 			bits-per-pixel = <32>;
 			type = "rgb";
 			transparency = "pixel";
 		};
+		layer_1 {
+			address = <0x31FA4000>;
+			buffer-offset = <1080>;
+			bits-per-pixel = <32>;
+			type = "rgb";
+			transparency = "layer";
+		};
 		layer_2 {
-			address = <0x31F50000>;
+			address = <0x30000000>;
+			buffer-offset = <1080>;
+			bits-per-pixel = <32>;
+			type = "rgb";
+			transparency = "layer";
+		};
+		layer_3 {
+			address = <0x31950000>;
+			buffer-offset = <1080>;
 			bits-per-pixel = <8>;
 			type = "rgb";
 			transparency = "clut32";
 		};
-		layer_3 {
-			address = <0x3216C000 0xCA8000>;
-			bits-per-pixel = <16>;
-			type = "rgb";
-			transparency = "layer";
-		};
-
+	
 		display-timings {
 			native-mode = <&wsxga>;
 			hd720p: 1280x720 {

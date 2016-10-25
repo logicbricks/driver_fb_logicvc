@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC frame buffer driver internal data structures
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -28,7 +28,7 @@
 #define XYLONFB_DRIVER_NAME "xylonfb"
 #define XYLONFB_DEVICE_NAME "logicvc"
 #define XYLONFB_DRIVER_DESCRIPTION "Xylon logiCVC frame buffer driver"
-#define XYLONFB_DRIVER_VERSION "3.1"
+#define XYLONFB_DRIVER_VERSION "4.0"
 
 #define INFO		1
 #define CORE		2
@@ -76,16 +76,41 @@
 /* Xylon FB driver color formats */
 enum xylonfb_color_format {
 	XYLONFB_FORMAT_A8,
+/* CLUT color formats */
 	XYLONFB_FORMAT_C8,
-	XYLONFB_FORMAT_RGB332,
-	XYLONFB_FORMAT_RGB565,
-	XYLONFB_FORMAT_XRGB8888,
-	XYLONFB_FORMAT_ARGB8888,
-	XYLONFB_FORMAT_YUYV,
-	XYLONFB_FORMAT_AYUV,
 	XYLONFB_FORMAT_CLUT_ARGB6565,
 	XYLONFB_FORMAT_CLUT_ARGB8888,
-	XYLONFB_FORMAT_CLUT_AYUV8888
+	XYLONFB_FORMAT_CLUT_AYUV8888,
+/* RGB color forrmats */
+	XYLONFB_FORMAT_RGB332,
+	XYLONFB_FORMAT_BGR233,
+	XYLONFB_FORMAT_ARGB3332,
+	XYLONFB_FORMAT_ABGR3233,
+	XYLONFB_FORMAT_RGB565,
+	XYLONFB_FORMAT_BGR565,
+	XYLONFB_FORMAT_ARGB565,
+	XYLONFB_FORMAT_ABGR565,
+	XYLONFB_FORMAT_XRGB8888,
+	XYLONFB_FORMAT_XBGR8888,
+	XYLONFB_FORMAT_ARGB8888,
+	XYLONFB_FORMAT_ABGR8888,
+	XYLONFB_FORMAT_XRGB2101010,
+	XYLONFB_FORMAT_XBGR2101010,
+/* YUV color formats */
+/* packed YCbCr 4:2:2, 32bit for 2 pixels. 8bit color component */
+	XYLONFB_FORMAT_YUYV,
+	XYLONFB_FORMAT_UYVY,
+/* packed YCbCr 4:2:2, 64bit for 2 pixels, 10bit color component */
+	XYLONFB_FORMAT_YUYV_121010,
+	XYLONFB_FORMAT_UYVY_121010,
+/* packed YCbCr 4:4:4, 32bit for 1 pixel, 8bit color component */
+	XYLONFB_FORMAT_AYUV,
+	XYLONFB_FORMAT_AVUY,
+	XYLONFB_FORMAT_XYUV,
+	XYLONFB_FORMAT_XVUY,
+/* packed YCbCr 4:4:4, 32bit for 1 pixel, 10bit color component */
+	XYLONFB_FORMAT_XYUV_2101010,
+	XYLONFB_FORMAT_XVUY_2101010
 };
 
 struct xylonfb_layer_data;
@@ -243,6 +268,8 @@ struct xylonfb_data {
 	u8 major;
 	u8 minor;
 	u8 patch;
+	u32 max_h_res;
+	u32 max_v_res;
 };
 
 /* Xylon FB video mode options */

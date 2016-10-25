@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC IP core parameters
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -143,8 +143,6 @@
 #define LOGICVC_MAX_LAYER_BUFFERS	3
 #define LOGICVC_MIN_XRES		64
 #define LOGICVC_MIN_VRES		1
-#define LOGICVC_MAX_XRES		2048
-#define LOGICVC_MAX_VRES		2048
 #define LOGICVC_CLUT_SIZE		256
 
 #define LOGICVC_COEFF_Y_R		29900

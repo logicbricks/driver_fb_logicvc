@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC frame buffer driver IOCTL functionality
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -85,13 +85,19 @@ int xylonfb_vsync_wait(u32 crt, struct fb_info *fbi)
 static unsigned int alpha_normalized(unsigned int alpha, unsigned int used_bits,
 				     bool set)
 {
-	if (set)
-		return alpha / (255 / ((1 << used_bits) - 1));
-	else
-		return (((255 << 16) / ((1 << used_bits) - 1)) * alpha) >> 16;
+	unsigned int val, x = 0;
+	if (set) {
+		return alpha / (1023 / ((1 << used_bits) - 1));
+	}
+	else {
+		if(used_bits == 6)
+			x = 1;
+		val = ((((1023 << 16) / ((1 << used_bits) - 1))+x) * alpha) >> 16;
+		return val;
+	}
 }
 
-static int xylonfb_layer_alpha(struct xylonfb_layer_data *ld, u8 *alpha,
+static int xylonfb_layer_alpha(struct xylonfb_layer_data *ld, u16 *alpha,
 			       bool set)
 {
 	struct xylonfb_data *data = ld->data;
@@ -104,18 +110,38 @@ static int xylonfb_layer_alpha(struct xylonfb_layer_data *ld, u8 *alpha,
 
 	switch (fd->type) {
 	case LOGICVC_LAYER_YUV:
-		used_bits = 8;
+		switch (fd->format){
+		case XYLONFB_FORMAT_YUYV:
+		case XYLONFB_FORMAT_UYVY:
+		case XYLONFB_FORMAT_XYUV:
+		case XYLONFB_FORMAT_XVUY:
+			used_bits = 8;
+			break;
+		case XYLONFB_FORMAT_YUYV_121010:
+		case XYLONFB_FORMAT_UYVY_121010:
+		case XYLONFB_FORMAT_XYUV_2101010:
+		case XYLONFB_FORMAT_XVUY_2101010:
+			used_bits = 10;
+			break;
+		}
 		break;
 	case LOGICVC_LAYER_RGB:
-		switch (fd->bpp) {
-		case 8:
+		switch (fd->format){
+		case XYLONFB_FORMAT_RGB332:
+		case XYLONFB_FORMAT_BGR233:
 			used_bits = 3;
 			break;
-		case 16:
+		case XYLONFB_FORMAT_RGB565:
+		case XYLONFB_FORMAT_BGR565:
 			used_bits = 6;
 			break;
-		case 32:
+		case XYLONFB_FORMAT_XRGB8888:
+		case XYLONFB_FORMAT_XBGR8888:
 			used_bits = 8;
+			break;
+		case XYLONFB_FORMAT_XRGB2101010:
+		case XYLONFB_FORMAT_XBGR2101010:
+			used_bits = 10;
 			break;
 		default:
 			return -EINVAL;
@@ -129,7 +155,7 @@ static int xylonfb_layer_alpha(struct xylonfb_layer_data *ld, u8 *alpha,
 		val = data->reg_access.get_reg_val(ld->base,
 						   LOGICVC_LAYER_ALPHA_ROFF,
 						   ld);
-		*alpha = (u8)(val & (0xFF >> (8 - used_bits)));
+		*alpha = (u16)(val & (0x03FF >> (10 - used_bits)));
 	}
 
 	/* get/set normalized alpha value */
@@ -175,20 +201,47 @@ static void xylonfb_rgb_yuv(u32 c1, u32 c2, u32 c3, u32 *pixel,
 			    struct xylonfb_layer_data *ld, bool rgb2yuv)
 {
 	struct xylonfb_data *data = ld->data;
+	struct xylonfb_layer_fix_data *fd = ld->fd;
 	u32 r, g, b, y, u, v;
 
 	if (rgb2yuv) {
-		y = ((data->coeff.cyr * c1) + (data->coeff.cyg * c2) +
-		     (data->coeff.cyb * c3) + data->coeff.cy) /
-		     LOGICVC_YUV_NORM;
-		u = ((-data->coeff.cur * c1) - (data->coeff.cug * c2) +
-		     (data->coeff.cub * c3) + LOGICVC_COEFF_U) /
-		     LOGICVC_YUV_NORM;
-		v = ((data->coeff.cvr * c1) - (data->coeff.cvg * c2) -
-		     (data->coeff.cvb * c3) + LOGICVC_COEFF_V) /
-		     LOGICVC_YUV_NORM;
+		switch (fd->format){
+		case XYLONFB_FORMAT_C8:
+		case XYLONFB_FORMAT_YUYV:
+		case XYLONFB_FORMAT_UYVY:
+		case XYLONFB_FORMAT_AYUV:
+		case XYLONFB_FORMAT_AVUY:
+		case XYLONFB_FORMAT_XYUV:
+		case XYLONFB_FORMAT_XVUY:
+			y = ((data->coeff.cyr * c1) + (data->coeff.cyg * c2) +
+				 (data->coeff.cyb * c3) + data->coeff.cy) /
+				 LOGICVC_YUV_NORM;
+			u = ((-data->coeff.cur * c1) - (data->coeff.cug * c2) +
+				 (data->coeff.cub * c3) + LOGICVC_COEFF_U) /
+				 LOGICVC_YUV_NORM;
+			v = ((data->coeff.cvr * c1) - (data->coeff.cvg * c2) -
+				 (data->coeff.cvb * c3) + LOGICVC_COEFF_V) /
+				 LOGICVC_YUV_NORM;
 
-		*pixel = (0xFF << 24) | (y << 16) | (u << 8) | v;
+			*pixel = (0xFF << 24) | (y << 16) | (u << 8) | v;
+			break;
+		case XYLONFB_FORMAT_XYUV_2101010:
+		case XYLONFB_FORMAT_XVUY_2101010:
+		case XYLONFB_FORMAT_YUYV_121010:
+		case XYLONFB_FORMAT_UYVY_121010:
+			y = ((data->coeff.cyr * c1) + (data->coeff.cyg * c2) +
+				 (data->coeff.cyb * c3) + data->coeff.cy) /
+				 LOGICVC_YUV_NORM;
+			u = ((-data->coeff.cur * c1) - (data->coeff.cug * c2) +
+				 (data->coeff.cub * c3) + LOGICVC_COEFF_U) /
+				 LOGICVC_YUV_NORM;
+			v = ((data->coeff.cvr * c1) - (data->coeff.cvg * c2) -
+				 (data->coeff.cvb * c3) + LOGICVC_COEFF_V) /
+				 LOGICVC_YUV_NORM;
+
+			*pixel = (0xFF <<30) | (y << 20) | (u << 10) | v;
+			break;
+		}
 	} else {
 		r = ((c1 * LOGICVC_RGB_NORM) + (LOGICVC_COEFF_R_U * c2) -
 		     LOGICVC_COEFF_R) / LOGICVC_RGB_NORM;
@@ -211,16 +264,18 @@ static int xylonfb_layer_color_rgb(struct xylonfb_layer_data *ld,
 	void __iomem *base;
 	u32 r = 0, g = 0, b = 0;
 	u32 raw_rgb, y, u, v;
-	int bpp, transparency;
+	int bpp, format, format_clut;
 
 	if (reg_offset == LOGICVC_LAYER_TRANSP_COLOR_ROFF) {
 		base = ld->base;
 		bpp = fd->bpp;
-		transparency = fd->transparency;
+		format_clut = fd->format_clut;
+		format = fd->format;
 	} else /* if (reg_offset == LOGICVC_BACKGROUND_COLOR_ROFF) */ {
 		base = data->dev_base;
 		bpp = data->bg_layer_bpp;
-		transparency = -1;
+		format_clut = fd->format_clut;
+		format = fd->format;
 	}
 
 	if (set) {
@@ -235,32 +290,69 @@ static int xylonfb_layer_color_rgb(struct xylonfb_layer_data *ld,
 			r = layer_color->r;
 			g = layer_color->g;
 			b = layer_color->b;
-check_bpp_set:
-			switch (bpp) {
-			case 8:
-				switch (transparency) {
-				case LOGICVC_ALPHA_CLUT_16BPP:
-					bpp = 16;
-					goto check_bpp_set;
+check_format_set:
+			switch (format) {
+			case XYLONFB_FORMAT_C8:
+				switch (format_clut) {
+				case XYLONFB_FORMAT_CLUT_ARGB6565:
+					format = XYLONFB_FORMAT_ARGB565;
+					goto check_format_get;
 					break;
-				case LOGICVC_ALPHA_CLUT_32BPP:
-					bpp = 32;
-					goto check_bpp_set;
+				case XYLONFB_FORMAT_CLUT_ARGB8888:
+					format = XYLONFB_FORMAT_ABGR8888;
+					goto check_format_get;
+					break;
+				case XYLONFB_FORMAT_CLUT_AYUV8888:
+					format = XYLONFB_FORMAT_AYUV;
+					goto check_format_set;
 					break;
 				default:
-					raw_rgb = (r & 0xE0) |
-						   ((g & 0xE0) >> 3) |
-						   ((b & 0xC0) >> 6);
-					break;
+					return -EINVAL;
 				}
 				break;
-			case 16:
-				raw_rgb = ((r & 0xF8) << 8) |
-					   ((g & 0xFC) << 3) |
-					   ((b & 0xF8) >> 3);
+			case XYLONFB_FORMAT_RGB332:
+			case XYLONFB_FORMAT_BGR233:
+				raw_rgb = (r & 0x0380) |
+					   ((g & 0x0380) >> 3) |
+					   ((b & 0x0300) >> 6);
 				break;
-			case 32:
+			case XYLONFB_FORMAT_ARGB3332:
+			case XYLONFB_FORMAT_ABGR3233:
+				raw_rgb = (r & 0xE0) |
+				   ((g & 0xE0) >> 3) |
+				   ((b & 0xC0) >> 6);
+				break;
+			case XYLONFB_FORMAT_RGB565:
+			case XYLONFB_FORMAT_BGR565:
+				raw_rgb = ((r & 0xF8) << 8) |
+				   ((g & 0xFC) << 3) |
+				   ((b & 0xF8) >> 3);
+			   break;
+			case XYLONFB_FORMAT_XRGB8888:
+			case XYLONFB_FORMAT_XBGR8888:
+			case XYLONFB_FORMAT_ARGB8888:
+			case XYLONFB_FORMAT_ABGR8888:
+			case XYLONFB_FORMAT_YUYV:
+			case XYLONFB_FORMAT_UYVY:
+			case XYLONFB_FORMAT_XYUV:
+			case XYLONFB_FORMAT_XVUY:
+			case XYLONFB_FORMAT_AYUV:
+			case XYLONFB_FORMAT_AVUY:
 				raw_rgb = (r << 16) | (g << 8) | b;
+				break;
+			case XYLONFB_FORMAT_ARGB565:
+			case XYLONFB_FORMAT_ABGR565:
+				raw_rgb = ((r & 0xF8) << 8) |
+					((g & 0xFC) << 3) |
+					((b & 0xF8) >> 3);
+				break;
+			case XYLONFB_FORMAT_XRGB2101010:
+			case XYLONFB_FORMAT_XBGR2101010:
+			case XYLONFB_FORMAT_YUYV_121010:
+			case XYLONFB_FORMAT_UYVY_121010:
+			case XYLONFB_FORMAT_XYUV_2101010:
+			case XYLONFB_FORMAT_XVUY_2101010:
+				raw_rgb = ((r & 0x3FF) << 20) | ((r & 0x3FF) << 10) | (r & 0x3FF);
 				break;
 			default:
 				raw_rgb = 0;
@@ -269,35 +361,50 @@ check_bpp_set:
 		data->reg_access.set_reg_val(raw_rgb, base, reg_offset, ld);
 	} else {
 		raw_rgb = data->reg_access.get_reg_val(base, reg_offset, ld);
-check_bpp_get:
+check_format_get:
 		if (data->flags & XYLONFB_FLAGS_BACKGROUND_LAYER_YUV) {
 			y = (raw_rgb >> 16) & 0xFF;
 			u = (raw_rgb >> 8) & 0xFF;
 			v = raw_rgb & 0xFF;
 			xylonfb_rgb_yuv(y, u, v, &raw_rgb, ld, false);
 		} else {
-			switch (bpp) {
-			case 8:
-				switch (transparency) {
-				case LOGICVC_ALPHA_CLUT_16BPP:
-					bpp = 16;
-					goto check_bpp_get;
+			switch (format) {
+			case XYLONFB_FORMAT_C8:
+				switch (fd->format_clut) {
+				case XYLONFB_FORMAT_CLUT_ARGB6565:
+					format = XYLONFB_FORMAT_ARGB565;
+					goto check_format_get;
 					break;
-				case LOGICVC_ALPHA_CLUT_32BPP:
-					bpp = 32;
-					goto check_bpp_get;
+				case XYLONFB_FORMAT_CLUT_ARGB8888:
+					format = XYLONFB_FORMAT_ABGR8888;
+					goto check_format_get;
 					break;
-				default:
-					r = raw_rgb >> 5;
-					r = (((r << 3) | r) << 2) | (r >> 1);
-					g = (raw_rgb >> 2) & 0x07;
-					g = (((g << 3) | g) << 2) | (g >> 1);
-					b = raw_rgb & 0x03;
-					b = (b << 6) | (b << 4) | (b << 2) | b;
+				case XYLONFB_FORMAT_CLUT_AYUV8888:
+					format = XYLONFB_FORMAT_AYUV;
+					goto check_format_set;
 					break;
 				}
 				break;
-			case 16:
+			case XYLONFB_FORMAT_RGB332:
+			case XYLONFB_FORMAT_BGR233:
+				r = raw_rgb >> 5;
+				r = (((r << 3) | r) << 2) | (r >> 1);
+				g = (raw_rgb >> 2) & 0x07;
+				g = (((g << 3) | g) << 2) | (g >> 1);
+				b = raw_rgb & 0x03;
+				b = (b << 6) | (b << 4) | (b << 2) | b;
+				break;
+			case XYLONFB_FORMAT_ARGB3332:
+			case XYLONFB_FORMAT_ABGR3233:
+				r = raw_rgb >> 5;
+				r = (((r << 3) | r) << 2) | (r >> 1);
+				g = (raw_rgb >> 2) & 0x07;
+				g = (((g << 3) | g) << 2) | (g >> 1);
+				b = raw_rgb & 0x03;
+				b = (b << 6) | (b << 4) | (b << 2) | b;
+				break;
+			case XYLONFB_FORMAT_RGB565:
+			case XYLONFB_FORMAT_BGR565:
 				r = raw_rgb >> 11;
 				r = (r << 3) | (r >> 2);
 				g = (raw_rgb >> 5) & 0x3F;
@@ -305,19 +412,47 @@ check_bpp_get:
 				b = raw_rgb & 0x1F;
 				b = (b << 3) | (b >> 2);
 				break;
-			case 32:
+			case XYLONFB_FORMAT_XRGB8888:
+			case XYLONFB_FORMAT_XBGR8888:
+			case XYLONFB_FORMAT_ARGB8888:
+			case XYLONFB_FORMAT_ABGR8888:
+			case XYLONFB_FORMAT_YUYV:
+			case XYLONFB_FORMAT_UYVY:
+			case XYLONFB_FORMAT_XYUV:
+			case XYLONFB_FORMAT_XVUY:
+			case XYLONFB_FORMAT_AYUV:
+			case XYLONFB_FORMAT_AVUY:
 				r = raw_rgb >> 16;
 				g = (raw_rgb >> 8) & 0xFF;
 				b = raw_rgb & 0xFF;
+				break;
+			case XYLONFB_FORMAT_ARGB565:
+			case XYLONFB_FORMAT_ABGR565:
+				r = raw_rgb >> 11;
+				r = (r << 3) | (r >> 2);
+				g = (raw_rgb >> 5) & 0x3F;
+				g = (g << 2) | (g >> 4);
+				b = raw_rgb & 0x1F;
+				b = (b << 3) | (b >> 2);
+				break;
+			case XYLONFB_FORMAT_XRGB2101010:
+			case XYLONFB_FORMAT_XBGR2101010:
+			case XYLONFB_FORMAT_YUYV_121010:
+			case XYLONFB_FORMAT_UYVY_121010:
+			case XYLONFB_FORMAT_XYUV_2101010:
+			case XYLONFB_FORMAT_XVUY_2101010:
+				r = raw_rgb >> 20;
+				g = (raw_rgb >> 10) & 0x3FF;
+				b = raw_rgb & 0x3FF;
 				break;
 			default:
 				raw_rgb = r = g = b = 0;
 			}
 		}
 		layer_color->raw_rgb = raw_rgb;
-		layer_color->r = (u8)r;
-		layer_color->g = (u8)g;
-		layer_color->b = (u8)b;
+		layer_color->r = r;
+		layer_color->g = g;
+		layer_color->b = b;
 	}
 
 	return 0;
@@ -356,8 +491,10 @@ static int xylonfb_layer_geometry(struct fb_info *fbi,
 			layer_geometry->height = height;
 		}
 		/* YUV 4:2:2 layer type can only have even layer width */
-		if ((width > 2) && (fd->type == LOGICVC_LAYER_YUV) &&
-		    (fd->bpp == 16))
+		if ((width > 2) && (fd->format == XYLONFB_FORMAT_YUYV ||
+			fd->format == XYLONFB_FORMAT_UYVY ||
+			fd->format == XYLONFB_FORMAT_YUYV_121010 ||
+			fd->format == XYLONFB_FORMAT_UYVY_121010))
 			width &= ~((unsigned long) + 1);
 
 		/*
@@ -466,6 +603,59 @@ static int xylonfb_layer_reg_access(struct xylonfb_layer_data *ld,
 	else
 		hw_access->value = data->reg_access.get_reg_val(ld->base,
 								rel_offset, ld);
+
+	return 0;
+}
+
+static int xylonfb_reload_registers(struct fb_info *fbi)
+{
+	struct fb_info **afbi = NULL;
+	struct xylonfb_layer_data *ld = fbi->par;
+	struct xylonfb_data *data = ld->data;
+	struct xylonfb_layer_registers regs;
+	void __iomem *dev_base = data->dev_base;
+	int i;
+
+	/* Reload layer registers */
+	afbi = dev_get_drvdata(fbi->device);
+	for (i = 0; i < data->layers; i++) {
+		ld = afbi[i]->par;
+		regs = ld->regs;
+		ld->data->reg_access.set_reg_val(ld->fb_pbase, ld->base,
+					     LOGICVC_LAYER_ADDR_ROFF,
+					     ld);
+		ld->data->reg_access.set_reg_val(regs.hpos, ld->base,
+						 LOGICVC_LAYER_HPOS_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.vpos, ld->base,
+						 LOGICVC_LAYER_VPOS_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.hsize, ld->base,
+						 LOGICVC_LAYER_HSIZE_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.vsize, ld->base,
+						 LOGICVC_LAYER_VSIZE_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.alpha, ld->base,
+						 LOGICVC_LAYER_ALPHA_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.ctrl, ld->base,
+						 LOGICVC_LAYER_CTRL_ROFF,
+						 ld);
+		ld->data->reg_access.set_reg_val(regs.transp, ld->base,
+						 LOGICVC_LAYER_TRANSP_COLOR_ROFF,
+						 ld);
+	}
+
+	/* Reload common registers */
+	writel(LOGICVC_INT_V_SYNC, dev_base + LOGICVC_INT_STAT_ROFF);
+	data->reg_access.set_reg_val(data->regs.int_mask, dev_base,
+					     LOGICVC_INT_MASK_ROFF, ld);
+
+	/* Reload resolution */
+	data->flags=0x11A34F;
+	if(fbi->fbops->fb_set_par(fbi))
+		return -EFAULT;
 
 	return 0;
 }
@@ -671,6 +861,13 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		var32 = (data->major << 16) | (data->minor << 8) | data->patch;
 		if (copy_to_user(argp, &var32, sizeof(u32)))
 			ret = -EFAULT;
+		break;
+
+	case XYLONFB_RELOAD_REGISTERS:
+		if (xylonfb_reload_registers(fbi))
+		{
+			ret = -EFAULT;
+		}
 		break;
 
 	case XYLONFB_WAIT_EDID:

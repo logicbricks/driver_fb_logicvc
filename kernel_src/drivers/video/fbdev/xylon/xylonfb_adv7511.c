@@ -3,7 +3,7 @@
  * interface for V4L2 adv7511 driver (Copyright 2012 Cisco Systems, Inc.
  * and/or its affiliates)
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public

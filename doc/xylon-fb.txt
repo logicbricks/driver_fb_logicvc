@@ -4,7 +4,7 @@ Xylon FB driver supports Xylon configurable video controller
 logiCVC FPGA IP core device.
 
 Required properties:
- - compatible: value must be "xylon,fb-3.00.a"
+ - compatible: value must be "xylon,fb-4.00.a"
  - device: the phandle for logiCVC video controller device
 
 Optional properties:
@@ -20,9 +20,17 @@ Optional properties:
              8           rgb       clut16
              8           rgb       clut32
              8           rgb       layer
+             8           rgb       pixel
             16           rgb       layer
+            16           rgb       pixel
+            30           rgb       layer
             32           rgb       layer
             32           rgb       pixel
+            16           yuv       layer
+            20           yuv       layer
+            30           yuv       layer
+            32           yuv       layer
+            32           yuv       pixel
       ======================================
 
  - edid-video-mode: video mode set to preferred EDID resolution
@@ -41,7 +49,7 @@ Optional properties:
 Example:
 
 	xylon_fb {
-		compatible = "xylon,fb-3.00.a";
+		compatible = "xylon,fb-4.00.a";
 		clocks = <&clkout_0>;
 		device = <&logicvc_0>;
 		console-layer = <0>;

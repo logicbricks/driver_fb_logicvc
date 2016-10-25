@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC frame buffer driver core functions
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -26,9 +26,16 @@
 #include "xylonfb_core.h"
 #include "logicvc.h"
 
-#define LOGICVC_PIX_FMT_AYUV	v4l2_fourcc('A', 'Y', 'U', 'V')
-#define LOGICVC_PIX_FMT_AVUY	v4l2_fourcc('A', 'V', 'U', 'Y')
-#define LOGICVC_PIX_FMT_ALPHA	v4l2_fourcc('A', '8', ' ', ' ')
+#define LOGICVC_PIX_FMT_AYUV			v4l2_fourcc('A', 'Y', 'U', 'V')
+#define LOGICVC_PIX_FMT_AVUY			v4l2_fourcc('A', 'V', 'U', 'Y')
+#define LOGICVC_PIX_FMT_ALPHA			v4l2_fourcc('A', '8', ' ', ' ')
+/* Framebuffer v4 added YUV formats */
+#define LOGICVC_PIX_FMT_XYUV			v4l2_fourcc('X', 'Y', 'U', 'V')
+#define LOGICVC_PIX_FMT_XVUY			v4l2_fourcc('X', 'V', 'U', 'Y')
+#define LOGICVC_PIX_FMT_YUYV_121010		v4l2_fourcc('Y', 'U', '2', '0')
+#define LOGICVC_PIX_FMT_UYVY_121010		v4l2_fourcc('U', 'Y', '2', '0')
+#define LOGICVC_PIX_FMT_XYUV_2101010	v4l2_fourcc('X', 'Y', '3', '0')
+#define LOGICVC_PIX_FMT_XVUY_2101010	v4l2_fourcc('X', 'V', '3', '0')
 
 #define XYLONFB_PSEUDO_PALETTE_SIZE	256
 #define XYLONFB_VRES_DEFAULT		1080
@@ -64,31 +71,41 @@ static void xylonfb_disable_logicvc_output(struct fb_info *fbi);
 static void xylonfb_logicvc_layer_enable(struct fb_info *fbi, bool enable);
 static void xylonfb_fbi_update(struct fb_info *fbi);
 
-static u32 xylonfb_get_reg(void __iomem *base, unsigned int offset,
-			   struct xylonfb_layer_data *ld)
-{
-	return readl(base + offset);
-}
-
-static void xylonfb_set_reg(u32 value, void __iomem *base, unsigned int offset,
-			    struct xylonfb_layer_data *ld)
-{
-	writel(value, (base + offset));
-}
-
 static unsigned long xylonfb_get_reg_mem_addr(void __iomem *base,
 					      unsigned int offset,
 					      struct xylonfb_layer_data *ld)
 {
 	unsigned int ordinal = offset / LOGICVC_REG_STRIDE;
 
-	if ((unsigned long)base - (unsigned long)ld->data->dev_base) {
+	if ((unsigned long)base - (unsigned long)ld->data->dev_base)
+	{
 		return (unsigned long)(&ld->regs) + (ordinal * sizeof(u32));
-	} else {
+	}
+	else
+	{
 		ordinal -= (LOGICVC_CTRL_ROFF / LOGICVC_REG_STRIDE);
 		return (unsigned long)(&ld->data->regs) +
 				       (ordinal * sizeof(u32));
 	}
+}
+
+static u32 xylonfb_get_reg(void __iomem *base, unsigned int offset,
+			   struct xylonfb_layer_data *ld)
+{
+	u32 value =  readl(base + offset);
+
+	unsigned long *reg_mem_addr = (unsigned long *)xylonfb_get_reg_mem_addr(base, offset, ld);
+	*reg_mem_addr = value;
+
+	return value;
+}
+
+static void xylonfb_set_reg(u32 value, void __iomem *base, unsigned int offset,
+			    struct xylonfb_layer_data *ld)
+{
+	unsigned long *reg_mem_addr = (unsigned long *)xylonfb_get_reg_mem_addr(base, offset, ld);
+	*reg_mem_addr = value;
+	writel(value, (base + offset));
 }
 
 static u32 xylonfb_get_reg_mem(void __iomem *base, unsigned int offset,
@@ -196,17 +213,18 @@ static int xylonfb_check_var(struct fb_var_screeninfo *var,
 {
 	struct xylonfb_layer_data *ld = fbi->par;
 	struct xylonfb_layer_fix_data *fd = ld->fd;
+	struct xylonfb_data *data = ld->data;
 
 	XYLONFB_DBG(INFO, "%s", __func__);
 
 	if (var->xres < LOGICVC_MIN_XRES)
 		var->xres = LOGICVC_MIN_XRES;
-	if (var->xres > LOGICVC_MAX_XRES)
-		var->xres = LOGICVC_MAX_XRES;
+	if (var->xres > data->max_h_res)
+		var->xres = data->max_h_res;
 	if (var->yres < LOGICVC_MIN_VRES)
 		var->yres = LOGICVC_MIN_VRES;
-	if (var->yres > LOGICVC_MAX_VRES)
-		var->yres = LOGICVC_MAX_VRES;
+	if (var->yres > data->max_v_res)
+		var->yres = data->max_v_res;
 
 	if (var->xres_virtual < var->xres)
 		var->xres_virtual = var->xres;
@@ -218,7 +236,10 @@ static int xylonfb_check_var(struct fb_var_screeninfo *var,
 		var->yres_virtual = fd->height;
 
 	/* YUV 4:2:2 layer type can only have even layer xoffset */
-	if (fd->format == XYLONFB_FORMAT_YUYV)
+	if (fd->format == XYLONFB_FORMAT_YUYV ||
+		fd->format == XYLONFB_FORMAT_UYVY ||
+		fd->format == XYLONFB_FORMAT_YUYV_121010 ||
+		fd->format == XYLONFB_FORMAT_UYVY_121010)
 		var->xoffset &= ~((unsigned long) + 1);
 
 	if ((var->xoffset + var->xres) >= var->xres_virtual)
@@ -445,6 +466,7 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 	case FB_VISUAL_TRUECOLOR:
 		switch (fd->format) {
 		case XYLONFB_FORMAT_RGB332:
+		case XYLONFB_FORMAT_BGR233:
 			while (len > 0) {
 				pixel = ((((r[id] & 0xE0) >> 5) << ro) |
 					(((g[id] & 0xE0) >> 5) << go) |
@@ -457,6 +479,7 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 			}
 			break;
 		case XYLONFB_FORMAT_RGB565:
+		case XYLONFB_FORMAT_BGR565:
 			while (len > 0) {
 				pixel = ((((r[id] & 0xF8) >> 3) << ro) |
 					(((g[id] & 0xFC) >> 2) << go) |
@@ -468,6 +491,7 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 			}
 			break;
 		case XYLONFB_FORMAT_XRGB8888:
+		case XYLONFB_FORMAT_XBGR8888:
 			while (len > 0) {
 				((u32 *)(fbi->pseudo_palette))[id] =
 					(((r[id] & 0xFF) << ro) |
@@ -478,6 +502,7 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 			}
 			break;
 		case XYLONFB_FORMAT_ARGB8888:
+		case XYLONFB_FORMAT_ABGR8888:
 			while (len > 0) {
 				if (t)
 					a = t[id];
@@ -486,6 +511,45 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 					((r[id] & 0xFF) << ro) |
 					((g[id] & 0xFF) << go) |
 					((b[id] & 0xFF) << bo));
+				len--;
+				id++;
+			}
+			break;
+		case XYLONFB_FORMAT_ARGB3332:
+		case XYLONFB_FORMAT_ABGR3233:
+			while (len > 0) {
+				if (t)
+					a = t[id];
+				((u32 *)(fbi->pseudo_palette))[id] =
+					(((a & 0xE0) << to) |
+					((r[id] & 0xE0) << ro) |
+					((g[id] & 0xE0) << go) |
+					((b[id] & 0xC0) << bo));
+				((u32 *)(fbi->pseudo_palette))[id] =
+					(pixel << 16) | pixel;
+				len--;
+				id++;
+			} break;
+		case XYLONFB_FORMAT_ARGB565:
+		case XYLONFB_FORMAT_ABGR565:
+			while (len > 0) {
+				if (t)
+					a = t[id];
+				((u32 *)(fbi->pseudo_palette))[id] =
+					(((a & 0xFC) << to) |
+					((r[id] & 0xF8) << ro) |
+					((g[id] & 0xFC) << go) |
+					((b[id] & 0xF8) << bo));
+				len--;
+				id++;
+			} break;
+		case XYLONFB_FORMAT_XRGB2101010:
+		case XYLONFB_FORMAT_XBGR2101010:
+			while (len > 0) {
+				((u32 *)(fbi->pseudo_palette))[id] =
+					(((r[id] & 0x3FF) << ro) |
+					((g[id] & 0x3FF) << go) |
+					((b[id] & 0x3FF) << bo));
 				len--;
 				id++;
 			}
@@ -598,14 +662,30 @@ static int xylonfb_blank(int blank_mode, struct fb_info *fbi)
 			xylonfb_set_pixels(fbi, ld, 8, 0);
 			break;
 		case XYLONFB_FORMAT_RGB332:
+		case XYLONFB_FORMAT_BGR233:
 			xylonfb_set_pixels(fbi, ld, 8, 0x00);
 			break;
+		case XYLONFB_FORMAT_ARGB3332:
+		case XYLONFB_FORMAT_ABGR3233:
+			xylonfb_set_pixels(fbi, ld, 16, 0xFF00);
+			break;
 		case XYLONFB_FORMAT_RGB565:
+		case XYLONFB_FORMAT_ARGB565:
 			xylonfb_set_pixels(fbi, ld, 16, 0x0000);
+			break;
+		case XYLONFB_FORMAT_ABGR565:
+		case XYLONFB_FORMAT_BGR565:
+			xylonfb_set_pixels(fbi, ld, 32, 0xFFFF0000);
 			break;
 		case XYLONFB_FORMAT_XRGB8888:
 		case XYLONFB_FORMAT_ARGB8888:
+		case XYLONFB_FORMAT_XBGR8888:
+		case XYLONFB_FORMAT_ABGR8888:
 			xylonfb_set_pixels(fbi, ld, 32, 0xFF000000);
+			break;
+		case XYLONFB_FORMAT_XRGB2101010:
+		case XYLONFB_FORMAT_XBGR2101010:
+			xylonfb_set_pixels(fbi, ld, 32, 0xC0000000);
 			break;
 		}
 		break;
@@ -665,7 +745,10 @@ static int xylonfb_pan_display(struct fb_var_screeninfo *var,
 			return -EINVAL;
 	}
 
-	if (fd->format == XYLONFB_FORMAT_YUYV)
+	if (fd->format == XYLONFB_FORMAT_YUYV ||
+		fd->format == XYLONFB_FORMAT_UYVY ||
+		fd->format == XYLONFB_FORMAT_YUYV_121010 ||
+		fd->format == XYLONFB_FORMAT_UYVY_121010)
 		var->xoffset &= ~((unsigned long) + 1);
 
 	fbi->var.xoffset = var->xoffset;
@@ -766,8 +849,8 @@ static void xylonfb_get_vmem_height(struct xylonfb_data *data, int layers,
 			     (fd->width * (fd->bpp / 8));
 	}
 
-	if (fd->height > (LOGICVC_MAX_VRES * LOGICVC_MAX_LAYER_BUFFERS))
-		fd->height = LOGICVC_MAX_VRES * LOGICVC_MAX_LAYER_BUFFERS;
+	if (fd->height > (data->max_v_res * LOGICVC_MAX_LAYER_BUFFERS))
+		fd->height = data->max_v_res * LOGICVC_MAX_LAYER_BUFFERS;
 }
 
 static void xylonfb_set_fbi_var_screeninfo(struct fb_var_screeninfo *var,
@@ -845,7 +928,7 @@ static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 		 * - 8 bpp: LAYER or PIXEL alpha
 		 *   It is not true color, RGB triplet is stored in 8 bits.
 		 * - 16 bpp:
-		 *   LAYER alpha: RGB triplet is stored in 16 bits
+		 *   LAYER or PIXEL alpha: RGB triplet is stored in 16 bits
 		 * - 32 bpp: LAYER or PIXEL alpha
 		 *   True color, RGB triplet or ARGB quadriplet
 		 *   is stored in 32 bits.
@@ -874,18 +957,40 @@ static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 		fbi->var.grayscale = 0;
 		break;
 	case LOGICVC_LAYER_YUV:
-		if (fd->format == XYLONFB_FORMAT_C8) {
+		switch (fd->format){
+		case XYLONFB_FORMAT_C8:
 			fbi->var.grayscale = LOGICVC_PIX_FMT_AYUV;
-		} else if (fd->format == XYLONFB_FORMAT_YUYV) {
-			if (fd->component_swap)
-				fbi->var.grayscale = V4L2_PIX_FMT_VYUY;
-			else
-				fbi->var.grayscale = V4L2_PIX_FMT_YVYU;
-		} else if (fd->format == XYLONFB_FORMAT_AYUV) {
-			if (fd->component_swap)
-				fbi->var.grayscale = LOGICVC_PIX_FMT_AVUY;
-			else
-				fbi->var.grayscale = LOGICVC_PIX_FMT_AYUV;
+			break;
+		case XYLONFB_FORMAT_YUYV:
+			fbi->var.grayscale = V4L2_PIX_FMT_VYUY;
+			break;
+		case XYLONFB_FORMAT_UYVY:
+			fbi->var.grayscale = V4L2_PIX_FMT_VYUY;
+			break;
+		case XYLONFB_FORMAT_AYUV:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_AYUV;
+			break;
+		case XYLONFB_FORMAT_AVUY:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_AVUY;
+			break;
+		case XYLONFB_FORMAT_XYUV:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_XYUV;
+			break;
+		case XYLONFB_FORMAT_XVUY:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_XVUY;
+			break;
+		case XYLONFB_FORMAT_YUYV_121010:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_YUYV_121010;
+		break;
+		case XYLONFB_FORMAT_UYVY_121010:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_UYVY_121010;
+			break;
+		case XYLONFB_FORMAT_XYUV_2101010:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_XYUV_2101010;
+		break;
+		case XYLONFB_FORMAT_XVUY_2101010:
+			fbi->var.grayscale = LOGICVC_PIX_FMT_XYUV_2101010;
+			break;
 		}
 		break;
 	}
@@ -938,6 +1043,9 @@ static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 			break;
 		}
 		break;
+	case XYLONFB_FORMAT_ARGB3332:
+		fbi->var.transp.offset = 8;
+		fbi->var.transp.length = 3;
 	case XYLONFB_FORMAT_RGB332:
 		fbi->var.red.offset = 5;
 		fbi->var.red.length = 3;
@@ -946,6 +1054,9 @@ static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 		fbi->var.blue.offset = 0;
 		fbi->var.blue.length = 2;
 		break;
+	case XYLONFB_FORMAT_ARGB565:
+		fbi->var.transp.offset = 24;
+		fbi->var.transp.length = 6;
 	case XYLONFB_FORMAT_RGB565:
 		fbi->var.red.offset = 11;
 		fbi->var.red.length = 5;
@@ -965,6 +1076,130 @@ static void xylonfb_set_hw_specifics(struct fb_info *fbi,
 		fbi->var.green.length = 8;
 		fbi->var.blue.offset = 0;
 		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_ABGR3233:
+		fbi->var.transp.offset = 8;
+		fbi->var.transp.length = 3;
+	case XYLONFB_FORMAT_BGR233:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 3;
+		fbi->var.green.offset = 3;
+		fbi->var.green.length = 3;
+		fbi->var.blue.offset = 6;
+		fbi->var.blue.length = 2;
+		break;
+	case XYLONFB_FORMAT_ABGR565:
+		fbi->var.transp.offset = 24;
+		fbi->var.transp.length = 6;
+	case XYLONFB_FORMAT_BGR565:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 5;
+		fbi->var.green.offset = 5;
+		fbi->var.green.length = 6;
+		fbi->var.blue.offset = 11;
+		fbi->var.blue.length = 5;
+		break;
+	case XYLONFB_FORMAT_ABGR8888:
+		fbi->var.transp.offset = 24;
+		fbi->var.transp.length = 8;
+	case XYLONFB_FORMAT_XBGR8888:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 8;
+		fbi->var.green.offset = 8;
+		fbi->var.green.length = 8;
+		fbi->var.blue.offset = 16;
+		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_XRGB2101010:
+		fbi->var.red.offset = 20;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 10;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 0;
+		fbi->var.blue.length = 10;
+		break;
+	case XYLONFB_FORMAT_XBGR2101010:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 10;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 20;
+		fbi->var.blue.length = 10;
+		break;
+	case XYLONFB_FORMAT_YUYV:
+		fbi->var.transp.offset = 16;
+		fbi->var.transp.length = 8;
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 8;
+		fbi->var.green.offset = 8;
+		fbi->var.green.length = 8;
+		fbi->var.blue.offset = 24;
+		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_UYVY:
+		fbi->var.transp.offset = 24;
+		fbi->var.transp.length = 8;
+		fbi->var.red.offset = 8;
+		fbi->var.red.length = 8;
+		fbi->var.green.offset = 0;
+		fbi->var.green.length = 8;
+		fbi->var.blue.offset = 16;
+		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_YUYV_121010:
+		fbi->var.transp.offset = 0;
+		fbi->var.transp.length = 10;
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 10;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 10;
+		fbi->var.blue.length = 10;
+		break;
+	case XYLONFB_FORMAT_UYVY_121010:
+		fbi->var.transp.offset = 10;
+		fbi->var.transp.length = 10;
+		fbi->var.red.offset = 10;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 0;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 0;
+		fbi->var.blue.length = 10;
+		break;
+	case XYLONFB_FORMAT_XYUV:
+		fbi->var.red.offset = 16;
+		fbi->var.red.length = 8;
+		fbi->var.green.offset = 8;
+		fbi->var.green.length = 8;
+		fbi->var.blue.offset = 0;
+		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_AVUY:
+		fbi->var.transp.offset = 24;
+		fbi->var.transp.length = 8;
+	case XYLONFB_FORMAT_XVUY:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 8;
+		fbi->var.green.offset = 8;
+		fbi->var.green.length = 8;
+		fbi->var.blue.offset = 16;
+		fbi->var.blue.length = 8;
+		break;
+	case XYLONFB_FORMAT_XYUV_2101010:
+		fbi->var.red.offset = 20;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 10;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 0;
+		fbi->var.blue.length = 10;
+		break;
+	case XYLONFB_FORMAT_XVUY_2101010:
+		fbi->var.red.offset = 0;
+		fbi->var.red.length = 10;
+		fbi->var.green.offset = 10;
+		fbi->var.green.length = 10;
+		fbi->var.blue.offset = 20;
+		fbi->var.blue.length = 10;
 		break;
 	}
 	fbi->var.transp.msb_right = 0;
@@ -1424,11 +1659,36 @@ static bool xylonfb_allow_console(struct xylonfb_layer_fix_data *fd)
 	XYLONFB_DBG(INFO, "%s", __func__);
 
 	switch (fd->format) {
+	case XYLONFB_FORMAT_A8:
 	case XYLONFB_FORMAT_C8:
 	case XYLONFB_FORMAT_RGB332:
 	case XYLONFB_FORMAT_RGB565:
 	case XYLONFB_FORMAT_XRGB8888:
 	case XYLONFB_FORMAT_ARGB8888:
+	case XYLONFB_FORMAT_BGR233:
+	case XYLONFB_FORMAT_ARGB3332:
+	case XYLONFB_FORMAT_ABGR3233:
+	case XYLONFB_FORMAT_ARGB565:
+	case XYLONFB_FORMAT_ABGR565:
+	case XYLONFB_FORMAT_BGR565:
+	case XYLONFB_FORMAT_XBGR8888:
+	case XYLONFB_FORMAT_ABGR8888:
+	case XYLONFB_FORMAT_XRGB2101010:
+	case XYLONFB_FORMAT_XBGR2101010:
+/* packed YCbCr 4:2:2, 32bit for 2 pixels. 8bit color component */
+	case XYLONFB_FORMAT_YUYV:
+	case XYLONFB_FORMAT_UYVY:
+/* packed YCbCr 4:2:2, 64bit for 2 pixels, 10bit color component */
+	case XYLONFB_FORMAT_YUYV_121010:
+	case XYLONFB_FORMAT_UYVY_121010:
+/* packed YCbCr 4:4:4, 32bit for 1 pixel, 8bit color component */
+	case XYLONFB_FORMAT_AYUV:
+	case XYLONFB_FORMAT_AVUY:
+	case XYLONFB_FORMAT_XYUV:
+	case XYLONFB_FORMAT_XVUY:
+/* packed YCbCr 4:4:4, 32bit for 1 pixel, 10bit color component */
+	case XYLONFB_FORMAT_XYUV_2101010:
+	case XYLONFB_FORMAT_XVUY_2101010:
 		return true;
 	default:
 		return false;
@@ -1487,7 +1747,14 @@ int xylonfb_init_core(struct xylonfb_data *data)
 
 	if (data->major >= 4)
 		data->flags |= XYLONFB_FLAGS_DYNAMIC_LAYER_ADDRESS;
-
+	if (data->major >= 5){
+		data->max_h_res = 8192;
+		data->max_v_res = 8192;
+	}
+	else{
+		data->max_h_res = 2048;
+		data->max_v_res = 2048;
+	}
 	layers = data->layers;
 	if (layers == 0) {
 		dev_err(dev, "no available layers\n");

@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC frame buffer driver IOCTL parameters
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -34,9 +34,9 @@ struct xylonfb_layer_buffer {
 struct xylonfb_layer_color {
 	__u32 raw_rgb;
 	__u8 use_raw;
-	__u8 r;
-	__u8 g;
-	__u8 b;
+	__u16 r;
+	__u16 g;
+	__u16 b;
 	bool set;
 };
 
@@ -51,7 +51,7 @@ struct xylonfb_layer_geometry {
 };
 
 struct xylonfb_layer_transparency {
-	__u8 alpha;
+	__u16 alpha;
 	bool set;
 };
 
@@ -81,5 +81,6 @@ struct xylonfb_layer_transparency {
 #define XYLONFB_IP_CORE_VERSION		XYLONFB_IOR(41, __u32)
 #define XYLONFB_WAIT_EDID		XYLONFB_IOW(42, unsigned int)
 #define XYLONFB_GET_EDID		XYLONFB_IOR(43, char)
+#define XYLONFB_RELOAD_REGISTERS	XYLONFB_IO(44)
 
 #endif /* __XYLONFB_H__ */

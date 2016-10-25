@@ -36,13 +36,13 @@ Example:
 	adv7511: adv7511@39 {
 		compatible = "adv7511";
 		reg = <0x39>;
-		interrupts = <0 54 4>;
-		interrupt-parent = <&ps7_scugic_0>;
+		interrupts = <0 59 4>;
+		interrupt-parent = <&intc>;
 		dma-request = <&logicvc_0>;
 		edid-addr = <0x50>;
 		video-input {
 			input-id = <1>;
-			input-style = <3>;
+			input-style = <2>;
 			input-color-depth = <8>;
 			bit-justification = <1>;
 			hsync-polarity = <0>;
@@ -51,9 +51,9 @@ Example:
 		};
 		video-output {
 			hdmi-mode = <0>;
-			output-format =	<0>;
+			output-format = <0>;
 			output-color-space = <0>;
-			up-conversion =	<0>;
+			up-conversion = <0>;
 			csc-enable = <1>;
 			csc-scaling-factor = <2>;
 			csc-coefficients {

@@ -1,7 +1,7 @@
 /*
  * Xylon logiCVC frame buffer Open Firmware driver
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -76,30 +76,66 @@ static int xylonfb_layer_set_format(struct xylonfb_layer_fix_data *fd,
 				fd->format_clut = XYLONFB_FORMAT_CLUT_ARGB8888;
 				break;
 			case LOGICVC_ALPHA_LAYER:
-				fd->format = XYLONFB_FORMAT_RGB332;
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_BGR233;
+				else
+					fd->format = XYLONFB_FORMAT_RGB332;
+				break;
+			case LOGICVC_ALPHA_PIXEL:
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_ABGR3233;
+				else
+					fd->format = XYLONFB_FORMAT_ARGB3332;
 				break;
 			default:
 				return -EINVAL;
 			}
 			break;
 		case 16:
+			switch (fd->transparency) {
+			case LOGICVC_ALPHA_LAYER:
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_BGR565;
+				else
+					fd->format = XYLONFB_FORMAT_RGB565;
+				break;
+			case LOGICVC_ALPHA_PIXEL:
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_ABGR565;
+				else
+					fd->format = XYLONFB_FORMAT_ARGB565;
+				break;
+			}
+			break;
+		case 30:
 			if (fd->transparency != LOGICVC_ALPHA_LAYER)
 				return -EINVAL;
-
-			fd->format = XYLONFB_FORMAT_RGB565;
+			if (fd->component_swap)
+				fd->format = XYLONFB_FORMAT_XBGR2101010;
+			else
+				fd->format = XYLONFB_FORMAT_XRGB2101010;
 			break;
+		case 24:
 		case 32:
 			switch (fd->transparency) {
 			case LOGICVC_ALPHA_LAYER:
-				fd->format = XYLONFB_FORMAT_XRGB8888;
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_XBGR8888;
+				else
+					fd->format = XYLONFB_FORMAT_XRGB8888;
 				break;
 			case LOGICVC_ALPHA_PIXEL:
-				fd->format = XYLONFB_FORMAT_ARGB8888;
+				if (fd->component_swap)
+					fd->format = XYLONFB_FORMAT_ABGR8888;
+				else
+					fd->format = XYLONFB_FORMAT_ARGB8888;
 				break;
 			default:
 				return -EINVAL;
 			}
 			break;
+		default:
+			return -EINVAL;
 		}
 		break;
 
@@ -115,21 +151,85 @@ static int xylonfb_layer_set_format(struct xylonfb_layer_fix_data *fd,
 		case 16:
 			if (fd->transparency != LOGICVC_ALPHA_LAYER)
 				return -EINVAL;
-
-			fd->format = XYLONFB_FORMAT_YUYV;
+			if (fd->component_swap)
+				fd->format = XYLONFB_FORMAT_UYVY;
+			else
+				fd->format = XYLONFB_FORMAT_YUYV;
 			break;
-		case 32:
-			if (fd->transparency != LOGICVC_ALPHA_PIXEL)
+		case 20:
+			if (fd->transparency != LOGICVC_ALPHA_LAYER)
 				return -EINVAL;
-
-			fd->format = XYLONFB_FORMAT_AYUV;
+			if (fd->component_swap)
+				fd->format = XYLONFB_FORMAT_UYVY_121010;
+			else
+				fd->format = XYLONFB_FORMAT_YUYV_121010;
+			break;
+		case 30:
+			if (fd->transparency != LOGICVC_ALPHA_LAYER)
+				return -EINVAL;
+			if (fd->component_swap)
+				fd->format = XYLONFB_FORMAT_XVUY_2101010;
+			else
+				fd->format = XYLONFB_FORMAT_XYUV_2101010;
+			break;
+		case 24:
+		case 32:
+			switch (fd->transparency) {
+				case LOGICVC_ALPHA_LAYER:
+					if (fd->component_swap)
+						fd->format = XYLONFB_FORMAT_XVUY;
+					else
+						fd->format = XYLONFB_FORMAT_XYUV;
+					break;
+				case LOGICVC_ALPHA_PIXEL:
+					if (fd->component_swap)
+						fd->format = XYLONFB_FORMAT_AVUY;
+					else
+						fd->format = XYLONFB_FORMAT_AYUV;
+					break;
+				default:
+					return -EINVAL;
+			}
 			break;
 		}
 		break;
-
 	default:
 		dev_err(dev, "unsupported layer type\n");
 		return -EINVAL;
+	}
+	switch (fd->format) {
+	case XYLONFB_FORMAT_A8:
+	case XYLONFB_FORMAT_C8:
+	case XYLONFB_FORMAT_RGB332:
+	case XYLONFB_FORMAT_BGR233:
+		fd->bpp = 8;
+		break;
+	case XYLONFB_FORMAT_ARGB3332:
+	case XYLONFB_FORMAT_ABGR3233:
+	case XYLONFB_FORMAT_RGB565:
+	case XYLONFB_FORMAT_BGR565:
+	case XYLONFB_FORMAT_YUYV:
+	case XYLONFB_FORMAT_UYVY:
+		fd->bpp = 16;
+		break;
+	case XYLONFB_FORMAT_ARGB565:
+	case XYLONFB_FORMAT_ABGR565:
+	case XYLONFB_FORMAT_XRGB8888:
+	case XYLONFB_FORMAT_XBGR8888:
+	case XYLONFB_FORMAT_ARGB8888:
+	case XYLONFB_FORMAT_ABGR8888:
+	case XYLONFB_FORMAT_XRGB2101010:
+	case XYLONFB_FORMAT_XBGR2101010:
+	case XYLONFB_FORMAT_YUYV_121010:
+	case XYLONFB_FORMAT_UYVY_121010:
+	case XYLONFB_FORMAT_AYUV:
+	case XYLONFB_FORMAT_AVUY:
+	case XYLONFB_FORMAT_XYUV:
+	case XYLONFB_FORMAT_XVUY:
+	case XYLONFB_FORMAT_XYUV_2101010:
+	case XYLONFB_FORMAT_XVUY_2101010:
+		fd->bpp = 32;
+		break;
 	}
 
 	return 0;
@@ -186,6 +286,9 @@ static int xylonfb_parse_layer_info(struct device_node *parent_dn,
 	switch (fd->bpp) {
 	case 8:
 	case 16:
+	case 20:
+	case 30:
+	case 24:
 	case 32:
 		break;
 	default:
@@ -282,7 +385,10 @@ static int xylon_parse_hw_info(struct device_node *dn,
 		data->flags |= XYLONFB_FLAGS_DISPLAY_INTERFACE_ITU656;
 
 	if (of_property_read_bool(dn, "readable-regs"))
+	{
 		data->flags |= XYLONFB_FLAGS_READABLE_REGS;
+		dev_warn(dev, "logicvc registers readable\n");
+	}
 	else
 		dev_warn(dev, "logicvc registers not readable\n");
 
@@ -315,6 +421,7 @@ static int xylon_parse_hw_info(struct device_node *dn,
 static const struct of_device_id logicvc_of_match[] = {
 	{ .compatible = "xylon,logicvc-3.00.a" },
 	{ .compatible = "xylon,logicvc-4.00.a" },
+	{ .compatible = "xylon,logicvc-5.00.a" },
 	{/* end of table */}
 };
 
@@ -476,6 +583,7 @@ static int xylonfb_remove(struct platform_device *pdev)
 
 static const struct of_device_id xylonfb_of_match[] = {
 	{ .compatible = "xylon,fb-3.00.a" },
+	{ .compatible = "xylon,fb-4.00.a" },
 	{/* end of table */},
 };
 MODULE_DEVICE_TABLE(of, xylonfb_of_match);

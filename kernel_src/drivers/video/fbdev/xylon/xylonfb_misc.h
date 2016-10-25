@@ -2,7 +2,7 @@
  * Xylon logiCVC frame buffer driver miscellaneous interface functionality
  * header file
  *
- * Copyright (C) 2014 Xylon d.o.o.
+ * Copyright (C) 2016 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
  *
  * This software is licensed under the terms of the GNU General Public
