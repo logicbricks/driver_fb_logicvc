@@ -133,8 +133,6 @@ static irqreturn_t xylonfb_isr(int irq, void *dev_id)
 	void __iomem *dev_base = data->dev_base;
 	u32 isr;
 
-	XYLONFB_DBG(CORE, "%s", __func__);
-
 	isr = readl(dev_base + LOGICVC_INT_STAT_ROFF);
 	if (isr & LOGICVC_INT_V_SYNC) {
 		writel(LOGICVC_INT_V_SYNC, dev_base + LOGICVC_INT_STAT_ROFF);
@@ -225,6 +223,10 @@ static int xylonfb_check_var(struct fb_var_screeninfo *var,
 		var->yres = LOGICVC_MIN_VRES;
 	if (var->yres > data->max_v_res)
 		var->yres = data->max_v_res;
+	if (fd->buffer_offset) {
+		if (var->yres > fd->buffer_offset)
+			return -EINVAL;
+	}
 
 	if (var->xres_virtual < var->xres)
 		var->xres_virtual = var->xres;
@@ -290,15 +292,40 @@ static int xylonfb_set_par(struct fb_info *fbi)
 
 	XYLONFB_DBG(INFO, "%s", __func__);
 
+	XYLONFB_DBG(INFO, "%s var mode: [%dx%d]&%d, (%d %d)(%d %d)(%d %d)",
+		__func__,
+		fbi->var.xres, fbi->var.yres, fbi->var.pixclock,
+		fbi->var.left_margin, fbi->var.right_margin,
+		fbi->var.upper_margin, fbi->var.lower_margin,
+		fbi->var.hsync_len, fbi->var.vsync_len);
+
 	if (data->flags & XYLONFB_FLAGS_VMODE_SET)
 		return 0;
 
-	if (!(data->flags & XYLONFB_FLAGS_EDID_VMODE) &&
-	    ((fbi->var.xres == data->vm_active.vmode.xres) ||
-	    (fbi->var.yres == data->vm_active.vmode.yres)))
-		resolution_change = false;
-	else
+	/* check if params changed */
 		resolution_change = true;
+	if (!(data->flags & XYLONFB_FLAGS_EDID_VMODE)) {
+		struct fb_videomode *vmact = &data->vm_active.vmode;
+		if (data->flags & XYLONFB_FLAGS_PUT_VSCREENINFO_EXACT) {
+			if ((fbi->var.xres == vmact->xres) &&
+				(fbi->var.yres == vmact->yres) &&
+				(fbi->var.left_margin == vmact->left_margin) &&
+				(fbi->var.right_margin == vmact->right_margin) &&
+				(fbi->var.upper_margin == vmact->upper_margin) &&
+				(fbi->var.lower_margin == vmact->lower_margin) &&
+				(fbi->var.hsync_len == vmact->hsync_len) &&
+				(fbi->var.vsync_len == vmact->vsync_len) &&
+				(fbi->var.pixclock == vmact->pixclock))
+			{
+				resolution_change = false;  
+			}
+		}
+		else {
+			if ((fbi->var.xres == vmact->xres) &&
+				(fbi->var.yres == vmact->yres))
+				resolution_change = false;  
+		}
+	}
 
 	if (resolution_change || (data->flags & XYLONFB_FLAGS_VMODE_INIT)) {
 		if (!(data->flags & XYLONFB_FLAGS_VMODE_INIT)) {
@@ -520,11 +547,10 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 			while (len > 0) {
 				if (t)
 					a = t[id];
-				((u32 *)(fbi->pseudo_palette))[id] =
-					(((a & 0xE0) << to) |
-					((r[id] & 0xE0) << ro) |
-					((g[id] & 0xE0) << go) |
-					((b[id] & 0xC0) << bo));
+				pixel = ((((a & 0xE0) >> 5) << to) |
+				(((r[id] & 0xE0) >> 5) << ro) |
+				(((g[id] & 0xE0) >> 5) << go) |
+				(((b[id] & 0xC0) >> 6) << bo));
 				((u32 *)(fbi->pseudo_palette))[id] =
 					(pixel << 16) | pixel;
 				len--;
@@ -536,10 +562,10 @@ static int xylonfb_set_color_hw(u16 *t, u16 *r, u16 *g, u16 *b,
 				if (t)
 					a = t[id];
 				((u32 *)(fbi->pseudo_palette))[id] =
-					(((a & 0xFC) << to) |
-					((r[id] & 0xF8) << ro) |
-					((g[id] & 0xFC) << go) |
-					((b[id] & 0xF8) << bo));
+					((((a & 0xFC) >> 2) << to) |
+					(((r[id] & 0xF8) >> 3) << ro) |
+					(((g[id] & 0xFC) >> 2) << go) |
+					(((b[id] & 0xF8) >> 3) << bo));
 				len--;
 				id++;
 			} break;
@@ -760,10 +786,7 @@ static int xylonfb_pan_display(struct fb_var_screeninfo *var,
 		data->reg_access.set_reg_val(var->yoffset, ld->base,
 					     LOGICVC_LAYER_VOFF_ROFF, ld);
 	}
-	data->reg_access.set_reg_val((fbi->var.xres - 1), ld->base,
-				     LOGICVC_LAYER_HPOS_ROFF, ld);
-	data->reg_access.set_reg_val((fbi->var.yres - 1), ld->base,
-				     LOGICVC_LAYER_VPOS_ROFF, ld);
+
 	if (data->flags & XYLONFB_FLAGS_DYNAMIC_LAYER_ADDRESS) {
 		ld->fb_pbase_active = ld->fb_pbase +
 				      ((var->xoffset * (fd->bpp / 8)) +
@@ -1228,7 +1251,7 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 	u32 xres, yres;
 #endif
 
-	XYLONFB_DBG(INFO, "%s", __func__);
+	XYLONFB_DBG(INFO, "%s flags 0x%x", __func__, data->flags);
 
 	if ((data->flags & XYLONFB_FLAGS_VMODE_INIT) &&
 	    (data->flags & XYLONFB_FLAGS_VMODE_CUSTOM) &&
@@ -1248,9 +1271,12 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 	if ((data->flags & XYLONFB_FLAGS_EDID_VMODE) &&
 	    (data->flags & XYLONFB_FLAGS_EDID_READY)) {
 		if (data->flags & XYLONFB_FLAGS_VMODE_INIT) {
-#if defined(CONFIG_FB_XYLON_MISC)
-			fb_var = *(data->misc.var_screeninfo);
-#endif
+			rc = fb_find_mode(&fb_var, fbi, xylonfb_mode_option,
+					  fbi->monspecs.modedb,
+					  fbi->monspecs.modedb_len,
+					  &xylonfb_vm.vmode, bpp);
+			if (!rc)
+				return -EINVAL;
 		} else {
 			rc = fb_find_mode(&fb_var, fbi, xylonfb_mode_option,
 					  fbi->monspecs.modedb,
@@ -1272,7 +1298,14 @@ static int xylonfb_set_timings(struct fb_info *fbi, int bpp)
 						    &fbi->monspecs.modedb[0]);
 #endif
 		}
-	} else {
+	}
+	/* get video mode directly from fb_var_screeninfo */
+	else if ( data->flags & XYLONFB_FLAGS_PUT_VSCREENINFO_EXACT) {
+		fb_var = fbi->var;
+		XYLONFB_DBG(INFO, "%s exact mode", __func__);
+	}
+	else {
+		XYLONFB_DBG(INFO, "%s fb_find_mode %s ", __func__, xylonfb_mode_option);           
 		rc = fb_find_mode(&fb_var, fbi, xylonfb_mode_option, NULL, 0,
 				  &xylonfb_vm.vmode, bpp);
 	}

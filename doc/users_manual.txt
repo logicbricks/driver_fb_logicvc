@@ -467,7 +467,7 @@ selected logiCVC layer. To show that application can work on different logiCVC
 layer types and formats, same colored rectangles will be drawn to different
 logiCVC layers regarding color depth and alpha pixel byte formats. On 8 bpp, 16 bpp 
 and 32 bpp layers test application will draw two images - Xylon and Xilinx logos. 
-On 8 bpp alpha layers test application will draw grayscale lena.bmp image.
+On 8 bpp alpha layers test application will draw grayscale lena512.pgm image.
 
 Xylon FB driver interface functions:
 The test application tests specific Xylon FB driver IOCTL functions which can
@@ -601,6 +601,7 @@ xylon_fb {
 	console-layer = <3>;
 	vsync-irq;
 	video-mode = "1280x1024";
+	//video-mode = "800x480"; // select custom mode for TM050RBH01
 };
 
 adv7511: adv7511@39 {

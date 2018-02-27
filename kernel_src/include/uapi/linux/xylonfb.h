@@ -76,11 +76,19 @@ struct xylonfb_layer_transparency {
 #define XYLONFB_BACKGROUND_COLOR \
 	XYLONFB_IOR(38, struct xylonfb_layer_color)
 #define XYLONFB_LAYER_EXT_BUFF_SWITCH	XYLONFB_IOW(39, bool)
+/* accesses only layer registers */
 #define XYLONFB_HW_ACCESS \
 	XYLONFB_IOR(40, struct xylonfb_hw_access)
+
 #define XYLONFB_IP_CORE_VERSION		XYLONFB_IOR(41, __u32)
 #define XYLONFB_WAIT_EDID		XYLONFB_IOW(42, unsigned int)
 #define XYLONFB_GET_EDID		XYLONFB_IOR(43, char)
 #define XYLONFB_RELOAD_REGISTERS	XYLONFB_IO(44)
+/* accesses control register */
+#define XYLONFB_HW_ACCESS_CTRL_REG \
+	XYLONFB_IOR(45, struct xylonfb_hw_access)
+/* accesses int_stat register */
+#define XYLONFB_HW_ACCESS_INT_STAT_REG \
+	XYLONFB_IOR(46, struct xylonfb_hw_access)
 
 #endif /* __XYLONFB_H__ */

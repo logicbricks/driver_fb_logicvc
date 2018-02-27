@@ -19,6 +19,8 @@
 #include <linux/kernel.h>
 #include <linux/of.h>
 
+#include "xylonfb_core.h"
+
 struct xylonfb_pixclk {
 	struct device *dev;
 	struct device_node *dn;
@@ -62,6 +64,7 @@ static int xylonfb_hw_pixclk_set_freq(struct device *dev,
 	if (dn == si570.dn)
 		clk = si570.clk;
 #endif
+	XYLONFB_DBG(INFO, "%s clk %p: freq_khz %d", __func__, clk, freq_khz);
 
 	if (clk && clk_set_rate(clk, (freq_khz * 1000))) {
 		dev_err(dev, "failed set pixel clock frequency\n");

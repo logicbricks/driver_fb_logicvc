@@ -7,6 +7,52 @@ History
 This history table shows versions of all subcomponents used by the xylonfb in the moment of the release.
 
 
+v4.3
+----
+ - release date (YYMMDD):180227
+ - released by: GP
+ - added param put-vscreeninfo-exact in dts that enables setting the 
+   exact video mode over the ioctl FBIOPUT_VSCREENINFO, when not set
+   mode is determined only from xres and yres param of fb_var_screeninfo
+   
+Component SW/HW   | Version     | Note
+------------------|-------------|--------
+Linux Kernel      | 4.9         |  -
+logiCVC IP        | 5.4.1       |  -
+u-boot xilinx     | 2017.1      |  -
+
+v4.2
+----
+ - release date (YYMMDD):170522
+ - released by: DS
+ - adv7511 driver updated for compiling on 4.5 kernel version
+   
+Component SW/HW   | Version     | Note
+------------------|-------------|--------
+Linux Kernel      | 4.9         |  -
+logiCVC IP        | 5.1.1       |  -
+u-boot xilinx     | 2017.1      |  -
+
+
+v4.1
+----
+ - release date (YYMMDD):170411
+ - released by: DS
+ - pixel variable defined, xylonfb_set_color_hw function
+ - added XYLONFB_HW_ACCESS_INT_STAT_REG ioctl
+ - removed unnecessary code in pan_display that wrote to the layer position registers.
+ - added XYLONFB_HW_ACCESS_CTRL_REG ioctl used in layers synchronization
+ - 1. If console-layer is not specified in dts, layer type is not checked for console compatibility
+ - 2. video-mode is preferred mode, even if EDID is obtained. EDID-preferred mode is used only if video-mode is not specified in dts 
+   
+Component SW/HW   | Version     | Note
+------------------|-------------|--------
+Linux Kernel      | 4.4  		|  Tested on Linux Kernel 4.4
+logiCVC IP        | 5.1.1       |  -
+u-boot xilinx     |	2016.01	    |  used for testing
+
+
+
 v4.0
 ----
  - release date (YYMMDD):160707

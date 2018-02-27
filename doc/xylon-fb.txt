@@ -20,31 +20,43 @@ Optional properties:
              8           rgb       clut16
              8           rgb       clut32
              8           rgb       layer
-             8           rgb       pixel
+			 8           rgb       pixel
             16           rgb       layer
-            16           rgb       pixel
+			16           rgb       pixel
             30           rgb       layer
-            32           rgb       layer
+			32           rgb       layer
             32           rgb       pixel
-            16           yuv       layer
-            20           yuv       layer
-            30           yuv       layer
-            32           yuv       layer
+			16           yuv       layer
+			20           yuv       layer
+			30           yuv       layer
+			32           yuv       layer
             32           yuv       pixel
+			
       ======================================
 
  - edid-video-mode: video mode set to preferred EDID resolution
-      If omitted, configured according to "video-mode" property.
+      If "video-mode" is also present, it is used as guidance for selecting
+      closest resolution supported by EDID.
  - edid-print: prints EDID parameters to the system log
       Must be used only with "edid-video-mode".
       If omitted, functionality is not available.
  - vsync-irq: generate interrupt on vertical synchronization pulse
  - video-mode: preferred video mode resolution
-      If omitted, configures logiCVC to default video resolution "1024x768".
-   - M: Coordinated Video Timings (CVT)
+      If omitted, configures logiCVC to default video resolution "1024x768" or 
+      custom video mode defined in display-timings (inside logiCVC block).
+ - put-vscreeninfo-exact: when enabled then ioctl FBIOPUT_VSCREENINFO applies exact video mode,
+       If omitted video mode is retrieved from xres and yres param of fb_var_screeninfo,
+       by looking in the linux video mode database (fb_find_mode)
+   Following flags are related only to VESA Coordinated Video Timings (CVT).
+   CVT allows using any (i.e. nonstandard) resolution - all video timings are
+   calculated (! -> no predefined timings) using resolution and other timing flags.
+   Use CVT only if display supports that exact resolution and timings.
+   Format:  <xres>x<yres>[M][R][-<bpp>][@<refresh>][i][m]  (e.g. 1024x768MR-8@60m).
+   If 'M' is not present, other flags are ignored.
+   - M: enable VESA Coordinated Video Timings (CVT)
    - R: reduced video timings for digital displays
    - i: calculate for an interlaced mode
-   - m: add margins to calculation calculation
+   - m: add margins to calculation
         (1.8% of xres rounded down to 8 pixels and 1.8% of yres).
 Example:
 
@@ -56,5 +68,14 @@ Example:
 		edid-video-mode;
 		edid-print;
 		vsync-irq;
-		video-mode = "1920x1080MR";
+		// Video Mode :
+		video-mode = "1920x1080MR";   // HD video mode VESA calculated (reduced timnigs)
+		//video-mode = "1920x1080M";  // HD video mode VESA calculated 
+		//video-mode = "1280x720";    // HD video mode from Linux Kernel video mode databese
+		// if no video mode is defined then display-timings are used (defined inside  logiCVC),
+		//     or if they are not defined  then default 1024x768 is used
+		put-vscreeninfo-exact;	// if enabled then ioctl FBIOPUT_VSCREENINFO applies exact video mode,
+					//  othervise video mode is retrieved from xres and yres param of fb_var_screeninfo
+					//  by looking in the linux video mode database (fb_find_mode)
+        
 	};

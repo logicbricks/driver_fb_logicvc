@@ -1584,7 +1584,11 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 	state->rgb_quantization_range_ctrl->is_private = true;
 
 	state->pad.flags = MEDIA_PAD_FL_SINK;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4, 4, 0)
 	err = media_entity_init(&sd->entity, 1, &state->pad, 0);
+#else
+	err = media_entity_pads_init(&sd->entity, 1, &state->pad);
+#endif
 	if (err)
 		goto err_hdl;
 

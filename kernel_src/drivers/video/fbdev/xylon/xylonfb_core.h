@@ -28,7 +28,7 @@
 #define XYLONFB_DRIVER_NAME "xylonfb"
 #define XYLONFB_DEVICE_NAME "logicvc"
 #define XYLONFB_DRIVER_DESCRIPTION "Xylon logiCVC frame buffer driver"
-#define XYLONFB_DRIVER_VERSION "4.0"
+#define XYLONFB_DRIVER_VERSION "4.3"
 
 #define INFO		1
 #define CORE		2
@@ -72,6 +72,7 @@
 #define XYLONFB_FLAGS_MISC_ADV7511		(1 << 19)
 #define XYLONFB_FLAGS_ADV7511_SKIP		(1 << 20)
 #define XYLONFB_FLAGS_ACTIVATE_NEXT_OPEN	(1 << 21)
+#define XYLONFB_FLAGS_PUT_VSCREENINFO_EXACT	(1 << 22)
 
 /* Xylon FB driver color formats */
 enum xylonfb_color_format {

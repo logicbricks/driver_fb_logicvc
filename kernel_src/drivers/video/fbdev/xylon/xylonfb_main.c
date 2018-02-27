@@ -484,6 +484,7 @@ static int xylonfb_get_logicvc_configuration(struct xylonfb_data *data)
 
 			sprintf(data->vm.name, "%dx%d",
 				data->vm.vmode.xres, data->vm.vmode.yres);
+			XYLONFB_DBG(INFO, "%s native mode %s ", __func__, data->vm.name);
 
 			data->flags |= XYLONFB_FLAGS_VMODE_CUSTOM;
 		}
@@ -513,9 +514,9 @@ static int xylonfb_get_driver_configuration(struct xylonfb_data *data)
 
 	ret = of_property_read_u32(dn, "console-layer", &data->console_layer);
 	if (ret && (ret != -EINVAL)) {
-			dev_err(dev, "failed get console-layer\n");
-			return ret;
-	} else {
+		dev_err(dev, "failed get console-layer\n");
+		return ret;
+	} else if (ret == 0) {
 		data->flags |= XYLONFB_FLAGS_CHECK_CONSOLE_LAYER;
 	}
 
@@ -526,20 +527,21 @@ static int xylonfb_get_driver_configuration(struct xylonfb_data *data)
 		data->flags |= XYLONFB_FLAGS_EDID_VMODE;
 		if (of_property_read_bool(dn, "edid-print"))
 			data->flags |= XYLONFB_FLAGS_EDID_PRINT;
-
-		return 0;
 	} else {
 		data->flags |= XYLONFB_FLAGS_ADV7511_SKIP;
 	}
 
 	ret = of_property_read_string(dn, "video-mode", &string);
-	if (ret && (ret != -EINVAL)) {
+	if (ret && (ret != -EINVAL) && !(data->flags & XYLONFB_FLAGS_EDID_VMODE)) {
 		dev_err(dev, "failed get video-mode\n");
 		return ret;
 	} else if (ret == 0) {
 		strcpy(data->vm.name, string);
 		return 0;
 	}
+
+	if (of_property_read_bool(dn, "put-vscreeninfo-exact"))
+		data->flags |= XYLONFB_FLAGS_PUT_VSCREENINFO_EXACT;
 
 	return 0;
 }
@@ -584,6 +586,7 @@ static int xylonfb_remove(struct platform_device *pdev)
 static const struct of_device_id xylonfb_of_match[] = {
 	{ .compatible = "xylon,fb-3.00.a" },
 	{ .compatible = "xylon,fb-4.00.a" },
+	{ .compatible = "xylon,fb-4.03" },
 	{/* end of table */},
 };
 MODULE_DEVICE_TABLE(of, xylonfb_of_match);

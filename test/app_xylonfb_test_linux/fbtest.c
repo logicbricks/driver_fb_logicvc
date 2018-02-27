@@ -50,6 +50,7 @@
 #define XILINX_TEST_IMAGE_Y_OFFSET (0)
 #define XYLON_TEST_IMAGE_X_OFFSET 0
 #define XYLON_TEST_IMAGE_Y_OFFSET (200 + XILINX_TEST_IMAGE_Y_OFFSET)
+#define RGB_COMPONENT_COLOR 255
 
 struct fb_resolution
 {
@@ -94,6 +95,10 @@ struct fb_data
 	unsigned int ip_ver;
 };
 
+typedef struct  
+{
+	int xres, yres;
+}PPMImage;
 
 static void app_usage_1(void)
 {
@@ -921,10 +926,10 @@ static void restore_cmap(struct cmap_data *cmap_data, int fbfd)
 }
 
 static void draw_rectangles(struct fb_fix_screeninfo *finfo,
-			    struct fb_var_screeninfo *vinfo,
-			    struct cmap_data *cmap_data,
-			    int fbfd, unsigned char *fbp,
-			    unsigned int start_color)
+				struct fb_var_screeninfo *vinfo,
+				struct cmap_data *cmap_data,
+				int fbfd, unsigned char *fbp,
+				unsigned int start_color)
 {
 	int pix_offset, bpp, bytes_pp, bytes_pl;
 	int rctg, x, y, y_end;
@@ -1076,18 +1081,20 @@ static void draw_rectangles(struct fb_fix_screeninfo *finfo,
 	}
 }
 
-static int draw_logos(struct fb_fix_screeninfo *finfo,
-		      struct fb_var_screeninfo *vinfo,
-		      unsigned char *fbp)
+static PPMImage *drawPPM(struct fb_fix_screeninfo *finfo,
+			struct fb_var_screeninfo *vinfo,
+			unsigned char *fbp, const char *filename)
 {
+	char buff[16];
+	PPMImage *ppm_img;
 	FILE *fp;
 	unsigned int argb_pixel, argb_pixel_next;
 	int pix_offset, bpp, bytes_pp, bytes_pl;
-	int x, y;
+	int x, y, c, rgb_comp_color;
 	int A_off, R_off, G_off, B_off;
 	int A_len, R_len, G_len, B_len;
 	unsigned int tmp;
-	unsigned int pix32, pix20, pix30;
+	unsigned int pix32, pix30; //pix20,
 	unsigned short pix16;
 	unsigned char pix8;
 	unsigned char alpha, red, green, blue;
@@ -1104,31 +1111,96 @@ static int draw_logos(struct fb_fix_screeninfo *finfo,
 	bpp = vinfo->bits_per_pixel;
 	bytes_pp = bpp / 8;
 	bytes_pl = finfo->line_length;
+	
+	//open PPM file for reading
+	fp = fopen(filename, "rb");
+	if (!fp) 
+	{
+		fprintf(stderr, "Unable to open file '%s'\n", filename);
+		exit(1);
+	}
 
-	/* Draw Full HD test image on visible area */
-	fp = fopen("CVC_test_picture.ppm", "rb");
+	//read image format
+	if (!fgets(buff, sizeof(buff), fp)) 
+	{
+		perror(filename);
+		exit(1);
+	}
+
+	//check the image format
+	if (buff[0] != 'P' || buff[1] != '6') 
+	{
+		fprintf(stderr, "Invalid image format (must be 'P6')\n");
+		exit(1);
+	}
+
+	//alloc memory form image
+	ppm_img = (PPMImage *)malloc(sizeof(PPMImage));
+	if (!ppm_img) 
+	{
+		fprintf(stderr, "Unable to allocate memory\n");
+		exit(1);
+	}
+
+	//check for comments
+	c = getc(fp);
+	while (c == '#') 
+	{
+		while (getc(fp) != '\n') ;
+		c = getc(fp);
+	}
+
+	ungetc(c, fp);
+
+	//read image size information
+	if (fscanf(fp, "%d %d", &ppm_img->xres, &ppm_img->yres) != 2) 
+	{
+		fprintf(stderr, "Invalid image size (error loading '%s')\n", filename);
+		exit(1);
+	}
+	
+	//read rgb component
+	if (fscanf(fp, "%d", &rgb_comp_color) != 1)
+	{
+		fprintf(stderr, "Invalid rgb component (error loading '%s')\n", filename);
+		exit(1);
+	}
+
+	//check rgb component depth
+	if (rgb_comp_color != RGB_COMPONENT_COLOR)
+	{
+		fprintf(stderr, "'%s' does not have 8-bits components\n", filename);
+		exit(1);
+	}
+
+	c = getc(fp);
+	while (c == 0x0A) 
+	{
+		c = getc(fp);
+	}
+	
 	if (fp != NULL)
 	{
-		fseek(fp, 17, SEEK_SET);
+		fseek(fp, -1, SEEK_CUR); /* back one character*/
 		if (bpp == 8 || bpp == 16 || (bpp == 32 && (vinfo->red.length == 8 || vinfo->red.length == 5)))
 		{
-			for (y = 0; y < 1080; y++)
+			for (y = 0; y < ppm_img->yres; y++)
 			{
-				for (x = 0; x < 1920; x++)
+				for (x = 0; x < ppm_img->xres; x++)
 				{
 					fread(&argb_pixel, 3, 1, fp);
 					alpha = 0xFF;
-					red = argb_pixel;
-					green = argb_pixel >> 8;
-					blue = argb_pixel >> 16;
+					red = argb_pixel; //>> 16
+					green = argb_pixel >> 8; //; 
+					blue = argb_pixel >> 16; //>> 8; 
 					argb_pixel = (alpha << 24) | (red << 16) | (green << 8) | (blue);
 					pix_offset = (x * bytes_pp) + (y * bytes_pl);
 					if ((finfo->visual == FB_VISUAL_FOURCC) && bpp == 16)
 					{
 						fread(&argb_pixel_next, 3, 1, fp);
 						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
+						red = argb_pixel_next; //>> 16
+						green = argb_pixel_next >> 8; //; 
 						blue = argb_pixel_next >> 16;
 						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
 					}
@@ -1237,14 +1309,15 @@ static int draw_logos(struct fb_fix_screeninfo *finfo,
 							}
 						}
 					}
+                
 				}
 			}
 		}
 		else if ( (vinfo->red.length == 10) && bpp == 32 )
 		{
-			for (y = 0; y < 1080; y++)
+			for (y = 0; y < ppm_img->yres; y++)
 			{
-				for (x = 0; x < 1920; x++)
+				for (x = 0; x < ppm_img->xres; x++)
 				{
 					fread(&argb_pixel, 3, 1, fp);
 					alpha = 0xFF;
@@ -1257,8 +1330,8 @@ static int draw_logos(struct fb_fix_screeninfo *finfo,
 					{
 						fread(&argb_pixel_next, 3, 1, fp);
 						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
+						red = argb_pixel_next; //>> 16
+						green = argb_pixel_next >> 8; //>> 16
 						blue = argb_pixel_next >> 16;
 						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
 					}
@@ -1309,482 +1382,124 @@ static int draw_logos(struct fb_fix_screeninfo *finfo,
 				}
 			}
 		}
+	printf("Image %s: %dx%d\n",filename, ppm_img->xres, ppm_img->yres);
 	}
 	else
 	{
 		puts("Unable to open full HD test image!");
 	}
-	sleep(1);
 	fclose(fp);
-	/* Draw Xilinx logo at upper left corner */
-	fp = fopen("xilinx-inc-logo.ppm", "rb");
-	fseek(fp, 15, SEEK_SET);
-	if (fp != NULL)
-	{
-		fseek(fp, 17, SEEK_SET);
-		if (bpp == 8 || bpp == 16 || (bpp == 32 && (vinfo->red.length == 8 || vinfo->red.length == 5)))
-		{
-			for (y = 0; y < 155; y++)
-			{
-				for (x = 0; x < 524; x++)
-				{
-					fread(&argb_pixel, 3, 1, fp);
-					alpha = 0xFF;
-					red = argb_pixel;
-					green = argb_pixel >> 8;
-					blue = argb_pixel >> 16;
-					argb_pixel = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					pix_offset = (x * bytes_pp) + (y * bytes_pl);
-					if ((finfo->visual == FB_VISUAL_FOURCC) && (bpp == 16))
-					{
-						fread(&argb_pixel_next, 3, 1, fp);
-						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
-						blue = argb_pixel_next >> 16;
-						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					}
-					if (bpp == 8)
-					{
-						pix8 = 0;
-						if (A_len)
-						{
-							tmp = argb_pixel >> 24;
-							tmp >>= (8 - A_len);
-							tmp <<= A_off;
-							pix8 |= tmp;
-						}
-						tmp = (argb_pixel >> 16) & 0xFF;
-						tmp >>= (8 - R_len);
-						tmp <<= R_off;
-						pix8 |= tmp;
-						tmp = (argb_pixel >> 8) & 0xFF;
-						tmp >>= (8 - G_len);
-						tmp <<= G_off;
-						pix8 |= tmp;
-						tmp = argb_pixel & 0xFF;
-						tmp >>= (8 - B_len);
-						tmp <<= B_off;
-						pix8 |= tmp;
-						*((unsigned short *)(fbp + pix_offset)) = pix8;
-					}
-					else if (bpp == 16)
-					{
-						if (finfo->visual == FB_VISUAL_TRUECOLOR)
-						{
-							pix16 = 0;
-							if (A_len)
-							{
-								tmp = argb_pixel >> 24;
-								tmp >>= (8 - A_len);
-								tmp <<= A_off;
-								pix16 |= tmp;
-							}
-							tmp = (argb_pixel >> 16) & 0xFF;
-							tmp >>= (8 - R_len);
-							tmp <<= R_off;
-							pix16 |= tmp;
-							tmp = (argb_pixel >> 8) & 0xFF;
-							tmp >>= (8 - G_len);
-							tmp <<= G_off;
-							pix16 |= tmp;
-							tmp = argb_pixel & 0xFF;
-							tmp >>= (8 - B_len);
-							tmp <<= B_off;
-							pix16 |= tmp;
-							*((unsigned int *)(fbp + pix_offset)) = pix16;
-						}
-						else if (finfo->visual == FB_VISUAL_FOURCC)
-						{
-							if (A_off == 16){
-								rgb_to_yuv(argb_pixel, argb_pixel_next, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == V4L2_PIX_FMT_VYUY ? 0 : 1);
-							}
-							else if (A_off == 24){
-								rgb_to_yuv(argb_pixel, argb_pixel_next, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_UYVY ? 0 : 1);
-							}
-							x++;
-						}
-					}
-					else if (bpp == 32)
-					{
-						if (finfo->visual == FB_VISUAL_TRUECOLOR)
-						{
-							pix32 = 0;
-							{
-								if (A_len)
-								{
-									tmp = argb_pixel >> 24;
-									tmp >>= (8 - A_len);
-									tmp <<= A_off;
-									pix32 |= tmp;
-								}
-								tmp = (argb_pixel >> 16) & 0xFF;
-								tmp >>= (8 - R_len);
-								tmp <<= R_off;
-								pix32 |= tmp;
-								tmp = (argb_pixel >> 8) & 0xFF;
-								tmp >>= (8 - G_len);
-								tmp <<= G_off;
-								pix32 |= tmp;
-								tmp = argb_pixel & 0xFF;
-								tmp >>= (8 - B_len);
-								tmp <<= B_off;
-								pix32 |= tmp;
-							}
-							*((unsigned int *)(fbp + pix_offset)) = pix32;
-						}
-						else if (finfo->visual == FB_VISUAL_FOURCC)
-						{
-							if (A_len) {
-								rgb_to_yuv(argb_pixel, 0,
-									(unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_AYUV ? 0 : 1);
-							}
-							else {
-								rgb_to_yuv(argb_pixel, 0,
-									(unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XYUV ? 0 : 1);
-							}
-						}
-					}
-				}
-			}
-		}
-		else if ( (vinfo->red.length == 10) && bpp == 32 )
-		{
-			fseek(fp, 17, SEEK_SET);
-			for (y = 0; y < 155; y++)
-			{
-				for (x = 0; x < 524; x++)
-				{
-					fread(&argb_pixel, 3, 1, fp);
-					alpha = 0xFF;
-					red = argb_pixel;
-					green = argb_pixel >> 8;
-					blue = argb_pixel >> 16;
-					argb_pixel = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					pix_offset = (x * bytes_pp) + (y * bytes_pl);
-					if ((finfo->visual == FB_VISUAL_FOURCC) && (vinfo->transp.length))
-					{
-						fread(&argb_pixel_next, 3, 1, fp);
-						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
-						blue = argb_pixel_next >> 16;
-						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					}
-					if (finfo->visual == FB_VISUAL_TRUECOLOR)
-					{
-						pix30 = 0;
-						if (A_len)
-						{
-							tmp = argb_pixel >> 30;
-							tmp >>= (2 - A_len);
-							tmp <<= A_off;
-							pix30 |= tmp;
-						}
-						tmp = (argb_pixel >> 16) & 0x03FF;
-						tmp <<= (R_len-8);
-						tmp <<= R_off;
-						pix30 |= tmp;
-						tmp = (argb_pixel >> 8) & 0x03FF;
-						tmp <<= (G_len-8);
-						tmp <<= G_off;
-						pix30 |= tmp;
-						tmp = argb_pixel & 0x03FF;
-						tmp <<= (B_len-8);
-						tmp <<= B_off;
-						pix30 |= tmp;
-						*((unsigned int *)(fbp + pix_offset)) = pix30;
-					}
-					else if (finfo->visual == FB_VISUAL_FOURCC)
-					{
-						if (vinfo->transp.length){
-							rgb_to_yuv_121010(argb_pixel, argb_pixel_next, 
-								(unsigned long long int *)(fbp + pix_offset), bpp,
-								vinfo->grayscale == LOGICVC_PIX_FMT_YUYV_121010 ? 0 : 1);
-							x++;
-						}
-						else
-						{
-							if (vinfo->red.offset == 20){
-								rgb888_to_yuv_2101010(argb_pixel, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XYUV_2101010 ? 0 : 1);
-							}
-							else if (vinfo->red.offset == 0){
-								rgb888_to_yuv_2101010(argb_pixel, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XVUY_2101010 ? 0 : 1);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	else
-	{
-		puts("Unable to open full HD test image!");
-	}
-	sleep(1);
-	fclose(fp);
-	/* Draw Xylon logo at upper left corner */
-	fp = fopen("xylon-logo.ppm", "rb");
-	if (fp != NULL)
-	{
-		fseek(fp, 17, SEEK_SET);
-		if (bpp == 8 || bpp == 16 || (bpp == 32 && (vinfo->red.length == 8 || vinfo->red.length == 5)))
-		{
-			for (y = 0; y < 80; y++)
-			{
-				for (x = 0; x < 154; x++)
-				{
-					fread(&argb_pixel, 3, 1, fp);
-					alpha = 0xFF;
-					red = argb_pixel;
-					green = argb_pixel >> 8;
-					blue = argb_pixel >> 16;
-					argb_pixel = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					pix_offset = (x * bytes_pp) + (y * bytes_pl);
-					if ((finfo->visual == FB_VISUAL_FOURCC) && (bpp == 16))
-					{
-						fread(&argb_pixel_next, 3, 1, fp);
-						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
-						blue = argb_pixel_next >> 16;
-						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					}
-					if (bpp == 8)
-					{
-						pix8 = 0;
-						if (A_len)
-						{
-							tmp = argb_pixel >> 24;
-							tmp >>= (8 - A_len);
-							tmp <<= A_off;
-							pix8 |= tmp;
-						}
-						tmp = (argb_pixel >> 16) & 0xFF;
-						tmp >>= (8 - R_len);
-						tmp <<= R_off;
-						pix8 |= tmp;
-						tmp = (argb_pixel >> 8) & 0xFF;
-						tmp >>= (8 - G_len);
-						tmp <<= G_off;
-						pix8 |= tmp;
-						tmp = argb_pixel & 0xFF;
-						tmp >>= (8 - B_len);
-						tmp <<= B_off;
-						pix8 |= tmp;
-						*((unsigned short *)(fbp + pix_offset)) = pix8;
-					}
-					else if (bpp == 16)
-					{
-						if (finfo->visual == FB_VISUAL_TRUECOLOR)
-						{
-							pix16 = 0;
-							if (A_len)
-							{
-								tmp = argb_pixel >> 24;
-								tmp >>= (8 - A_len);
-								tmp <<= A_off;
-								pix16 |= tmp;
-							}
-							tmp = (argb_pixel >> 16) & 0xFF;
-							tmp >>= (8 - R_len);
-							tmp <<= R_off;
-							pix16 |= tmp;
-							tmp = (argb_pixel >> 8) & 0xFF;
-							tmp >>= (8 - G_len);
-							tmp <<= G_off;
-							pix16 |= tmp;
-							tmp = argb_pixel & 0xFF;
-							tmp >>= (8 - B_len);
-							tmp <<= B_off;
-							pix16 |= tmp;
-							*((unsigned int *)(fbp + pix_offset)) = pix16;
-						}
-						else if (finfo->visual == FB_VISUAL_FOURCC)
-						{
-							if (A_off == 16){
-								rgb_to_yuv(argb_pixel, argb_pixel_next, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == V4L2_PIX_FMT_VYUY ? 0 : 1);
-							}
-							else if (A_off == 24){
-								rgb_to_yuv(argb_pixel, argb_pixel_next, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_UYVY ? 0 : 1);
-							}
-							x++;
-						}
-					}
-					else if (bpp == 32)
-					{
-						if (finfo->visual == FB_VISUAL_TRUECOLOR)
-						{
-							pix32 = 0;
-							{
-								if (A_len)
-								{
-									tmp = argb_pixel >> 24;
-									tmp >>= (8 - A_len);
-									tmp <<= A_off;
-									pix32 |= tmp;
-								}
-								tmp = (argb_pixel >> 16) & 0xFF;
-								tmp >>= (8 - R_len);
-								tmp <<= R_off;
-								pix32 |= tmp;
-								tmp = (argb_pixel >> 8) & 0xFF;
-								tmp >>= (8 - G_len);
-								tmp <<= G_off;
-								pix32 |= tmp;
-								tmp = argb_pixel & 0xFF;
-								tmp >>= (8 - B_len);
-								tmp <<= B_off;
-								pix32 |= tmp;
-							}
-							*((unsigned int *)(fbp + pix_offset)) = pix32;
-						}
-						else if (finfo->visual == FB_VISUAL_FOURCC)
-						{
-							if (A_len) {
-								rgb_to_yuv(argb_pixel, 0,
-									(unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_AYUV ? 0 : 1);
-							}
-							else {
-								rgb_to_yuv(argb_pixel, 0,
-									(unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XYUV ? 0 : 1);
-							}
-						}
-					}
-				}
-			}
-		}
-		else if ((vinfo->red.length == 10) && bpp == 32 )
-		{
-			for (y = 0; y < 80; y++)
-			{
-				for (x = 0; x < 154; x++)
-				{
-					fread(&argb_pixel, 3, 1, fp);
-					alpha = 0xFF;
-					red = argb_pixel;
-					green = argb_pixel >> 8;
-					blue = argb_pixel >> 16;
-					argb_pixel = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					pix_offset = (x * bytes_pp) + (y * bytes_pl);
-					if ((finfo->visual == FB_VISUAL_FOURCC) && (vinfo->transp.length))
-					{
-						fread(&argb_pixel_next, 3, 1, fp);
-						alpha = 0xFF;
-						red = argb_pixel_next;
-						green = argb_pixel_next >> 8;
-						blue = argb_pixel_next >> 16;
-						argb_pixel_next = (alpha << 24) | (red << 16) | (green << 8) | (blue);
-					}
-					if (finfo->visual == FB_VISUAL_TRUECOLOR)
-					{
-						pix30 = 0;
-						if (A_len)
-						{
-							tmp = argb_pixel >> 30;
-							tmp >>= (2 - A_len);
-							tmp <<= A_off;
-							pix30 |= tmp;
-						}
-						tmp = (argb_pixel >> 16) & 0x03FF;
-						tmp <<= (R_len-8);
-						tmp <<= R_off;
-						pix30 |= tmp;
-						tmp = (argb_pixel >> 8) & 0x03FF;
-						tmp <<= (G_len-8);
-						tmp <<= G_off;
-						pix30 |= tmp;
-						tmp = argb_pixel & 0x03FF;
-						tmp <<= (B_len-8);
-						tmp <<= B_off;
-						pix30 |= tmp;
-						*((unsigned int *)(fbp + pix_offset)) = pix30;
-					}
-					else if (finfo->visual == FB_VISUAL_FOURCC)
-					{
-						if (vinfo->transp.length){
-							
-							rgb_to_yuv_121010(argb_pixel, argb_pixel_next, 
-								(unsigned long long int *)(fbp + pix_offset), bpp,
-								vinfo->grayscale == LOGICVC_PIX_FMT_YUYV_121010 ? 0 : 1);
-							x++;
-						}
-						else
-						{
-							if (vinfo->red.offset == 20){
-								rgb888_to_yuv_2101010(argb_pixel, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XYUV_2101010 ? 0 : 1);
-							}
-							else if (vinfo->red.offset == 0){
-								rgb888_to_yuv_2101010(argb_pixel, (unsigned int *)(fbp + pix_offset), bpp,
-									vinfo->grayscale == LOGICVC_PIX_FMT_XVUY_2101010 ? 0 : 1);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	else
-	{
-		puts("Unable to open full HD test image!");
-	}
-	sleep(1);
-	fclose(fp);
-
+	free(ppm_img);
 	return 0;
 }
 
-static int draw_grayscale(struct fb_fix_screeninfo *finfo,
+static int drawPGM(struct fb_fix_screeninfo *finfo,
 				struct fb_var_screeninfo *vinfo,
 				struct cmap_data *cmap_data,
-				int fbfd, unsigned char *fbp)
+				int fbfd, unsigned char *fbp, char* filename)
 {
+	/* Draw PGM image at upper left corner */
 	FILE *fp;
+	PPMImage *pgm_img;
 	unsigned char argb_pixel;
 	int pix_offset, bpp, bytes_pp, bytes_pl;
-	int x, y;
+	int x, y, c, rgb_comp_color; 
+	char buff[16];
 
-/* Draw lena.bmp at upper left corner */
-
-	fp = fopen("lena512.bmp", "rb");
-	printf("lena512.bmp");
 	bpp = vinfo->bits_per_pixel;
 	bytes_pp = bpp / 8;
 	bytes_pl = finfo->line_length;
+	
+	//open PGM file for reading
+	fp = fopen(filename, "rb");
+	if (!fp) 
+	{
+		fprintf(stderr, "Unable to open file '%s'\n", filename);
+		exit(1);
+	}
+
+	//read image format
+	if (!fgets(buff, sizeof(buff), fp)) 
+	{
+		perror(filename);
+		exit(1);
+	}
+
+	//check the image format
+	if (buff[0] != 'P' || buff[1] != '5') 
+	{
+		fprintf(stderr, "Invalid image format (must be 'P5')\n");
+		exit(1);
+	}
+
+	//alloc memory form image
+	pgm_img = (PPMImage *)malloc(sizeof(PPMImage));
+	if (!pgm_img) 
+	{
+		fprintf(stderr, "Unable to allocate memory\n");
+		exit(1);
+	}
+	//check for comments
+	c = getc(fp);
+	while (c == '#') 
+	{
+		while (getc(fp) != '\n') ;
+		c = getc(fp);
+	}
+
+	ungetc(c, fp);
+
+	//read image size information
+	if (fscanf(fp, "%d %d", &pgm_img->xres, &pgm_img->yres) != 2) 
+	{
+		fprintf(stderr, "Invalid image size (error loading '%s')\n", filename);
+		exit(1);
+	}
+
+	//read rgb component
+	if (fscanf(fp, "%d", &rgb_comp_color) != 1)
+	{
+		fprintf(stderr, "Invalid rgb component (error loading '%s')\n", filename);
+		exit(1);
+	}
+
+	//check rgb component depth
+	if (rgb_comp_color != RGB_COMPONENT_COLOR)
+	{
+		fprintf(stderr, "'%s' does not have 8-bits components\n", filename);
+		exit(1);
+	}
+
+	c = getc(fp);
+	while (c == 0x0A) 
+	{
+		c = getc(fp);
+	}
+
 	if (fp != NULL)
 	{
-		fseek(fp, 55, SEEK_SET);
+		fseek(fp, -1, SEEK_CUR); /* back one character*/
 		if (bpp == 8)
 		{
-			for (y = 511; y >= 0; y--)
+			for (y = 0; y < pgm_img->yres; y++)
 			{
-				for (x = 0; x < 512; x++)
+				for (x = 0; x < pgm_img->xres; x++)
 				{
 					fread(&argb_pixel, 1, 1, fp);
-					argb_pixel &=0xFF;
+					//argb_pixel &=0xFF;
 					pix_offset = (x * bytes_pp) + (y * bytes_pl);
 					*((unsigned char *)(fbp + pix_offset)) = argb_pixel;
 				}
 			}
 		}
+	printf("Image %s: %dx%d\n",filename, pgm_img->xres, pgm_img->yres);
 	}
 	else
 	{
 		puts("Unable to open full grayscale test image!");
 	}
 	fclose(fp);
-
+	free(pgm_img);
 	return 0;
 }
 
@@ -1964,7 +1679,7 @@ int main(int argc, char *argv[])
 	struct fb_data *fbtest;
 	int i, tmp;
 	unsigned char con_off;
-
+    
 	if (argc < 2)
 	{
 		app_usage_1();
@@ -2208,8 +1923,20 @@ int main(int argc, char *argv[])
 		if (fbtest->vinfo.xres_virtual > fbtest->vinfo.xres &&
 			fbtest->vinfo.yres_virtual > fbtest->vinfo.yres)
 		{
-			if (draw_logos(&fbtest->finfo, &fbtest->vinfo,
-				       fbtest->fbp) < 0)
+            if (drawPPM(&fbtest->finfo, &fbtest->vinfo,
+			           fbtest->fbp,"CVC_test_picture.ppm") < 0)
+			{
+				goto app_exit;
+			}
+            sleep(1);
+            if (drawPPM(&fbtest->finfo, &fbtest->vinfo,
+			           fbtest->fbp,"xilinx-inc-logo.ppm") < 0)
+			{
+				goto app_exit;
+			}
+            sleep(1);
+            if (drawPPM(&fbtest->finfo, &fbtest->vinfo,
+			           fbtest->fbp,"xylon-logo.ppm") < 0)
 			{
 				goto app_exit;
 			}
@@ -2217,8 +1944,8 @@ int main(int argc, char *argv[])
 	}
 	if (fbtest->finfo.visual == FB_VISUAL_PSEUDOCOLOR){
 		puts ("\nDrawing grayscale...\n");
-		if (draw_grayscale(&fbtest->finfo, &fbtest->vinfo, fbtest->cmap_data,
-			fbtest->fbfd, fbtest->fbp))
+		if (drawPGM(&fbtest->finfo, &fbtest->vinfo, fbtest->cmap_data,
+			fbtest->fbfd, fbtest->fbp,"lena512.pgm"))
 		{
 			goto app_exit;
 		}

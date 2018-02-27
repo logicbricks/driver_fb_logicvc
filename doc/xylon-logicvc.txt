@@ -151,7 +151,7 @@ Example:
 		};
 	
 		display-timings {
-			native-mode = <&wsxga>;
+			native-mode = <&wsxga>;  /* native mode is selected here */
 			hd720p: 1280x720 {
 				clock-frequency = <74250000>;
 				hactive = <1280>;

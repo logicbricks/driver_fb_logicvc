@@ -660,6 +660,50 @@ static int xylonfb_reload_registers(struct fb_info *fbi)
 	return 0;
 }
 
+static int xylonfb_ctrl_reg_access(struct xylonfb_layer_data *ld,
+				    struct xylonfb_hw_access *hw_access,
+				    bool set)
+{
+	struct xylonfb_data *data = ld->data;
+	u32 offset;
+
+	if (hw_access->offset != LOGICVC_CTRL_ROFF)
+		return -EPERM;
+
+	offset = hw_access->offset;
+	if (set)
+		data->reg_access.set_reg_val(hw_access->value,
+					     data->dev_base,
+					     offset,
+					     ld);
+	else
+		hw_access->value =
+			data->reg_access.get_reg_val(data->dev_base,
+						     offset,
+						     ld);
+
+	return 0;
+}
+
+static int xylonfb_int_stat_reg_access(struct xylonfb_layer_data *ld,
+				    struct xylonfb_hw_access *hw_access,
+				    bool set)
+{
+	struct xylonfb_data *data = ld->data;
+	u32 offset;
+
+	if (hw_access->offset != LOGICVC_INT_STAT_ROFF)
+		return -EPERM;
+
+	offset = hw_access->offset;
+	if (set)
+		writel(hw_access->value, data->dev_base + offset);
+	else
+		hw_access->value = readl(data->dev_base + offset);
+
+	return 0;
+}
+
 int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 {
 	struct xylonfb_layer_data *ld = fbi->par;
@@ -906,6 +950,32 @@ int xylonfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 #else
 		return -EPERM;
 #endif
+		break;
+		
+	case XYLONFB_HW_ACCESS_CTRL_REG:
+		if (copy_from_user(&ioctl.hw_access, argp,
+				   sizeof(ioctl.hw_access)))
+			return -EFAULT;
+
+		ret = xylonfb_ctrl_reg_access(ld, &ioctl.hw_access,
+					       ioctl.hw_access.set);
+		if (!ret && !ioctl.hw_access.set)
+			if (copy_to_user(argp, &ioctl.hw_access,
+					 sizeof(ioctl.hw_access)))
+				ret = -EFAULT;
+		break;
+		
+	case XYLONFB_HW_ACCESS_INT_STAT_REG:
+		if (copy_from_user(&ioctl.hw_access, argp,
+				   sizeof(ioctl.hw_access)))
+			return -EFAULT;
+
+		ret = xylonfb_int_stat_reg_access(ld, &ioctl.hw_access,
+					       ioctl.hw_access.set);
+		if (!ret && !ioctl.hw_access.set)
+			if (copy_to_user(argp, &ioctl.hw_access,
+					 sizeof(ioctl.hw_access)))
+				ret = -EFAULT;
 		break;
 
 	default:
